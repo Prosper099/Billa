@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to verify user authentication
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // User profile rule
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      // Invoices subcollection
+      match /invoices/{invoiceId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Customers subcollection
+      match /customers/{customerId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Reminders subcollection
+      match /reminders/{reminderId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+  }
+}

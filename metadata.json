@@ -1,0 +1,6 @@
+{
+  "name": "Billa - AI Billing Assistant",
+  "description": "Create, track, and get paid with Billa, a modern AI-powered billing and invoicing assistant for small businesses.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
