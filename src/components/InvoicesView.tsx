@@ -28,6 +28,7 @@ export const InvoicesView: React.FC = () => {
     setReminderModalInvoice,
     markInvoiceAsPaid,
     deleteInvoice,
+    requestConfirmation,
     setIsReceiptScannerOpen,
     showToast,
   } = useApp();
@@ -309,12 +310,17 @@ export const InvoicesView: React.FC = () => {
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => {
-                        if (window.confirm(`Delete invoice ${inv.invoiceNumber}?`)) {
-                          deleteInvoice(inv.id);
-                        }
+                        requestConfirmation({
+                          title: 'Delete Invoice?',
+                          message: `Are you sure you want to permanently delete invoice ${inv.invoiceNumber} for ${inv.customerName}?`,
+                          confirmText: 'Delete Invoice',
+                          confirmVariant: 'danger',
+                          onConfirm: () => deleteInvoice(inv.id),
+                        });
                       }}
-                      className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 cursor-pointer"
+                      className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                       title="Delete invoice"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -423,10 +429,15 @@ export const InvoicesView: React.FC = () => {
                           </button>
 
                           <button
+                            type="button"
                             onClick={() => {
-                              if (window.confirm(`Delete invoice ${inv.invoiceNumber}?`)) {
-                                deleteInvoice(inv.id);
-                              }
+                              requestConfirmation({
+                                title: 'Delete Invoice?',
+                                message: `Are you sure you want to delete invoice ${inv.invoiceNumber} for ${inv.customerName}?`,
+                                confirmText: 'Delete Invoice',
+                                confirmVariant: 'danger',
+                                onConfirm: () => deleteInvoice(inv.id),
+                              });
                             }}
                             className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                             title="Delete invoice"

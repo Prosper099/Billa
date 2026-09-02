@@ -187,3 +187,14 @@ export interface RevenueTrendPoint {
   outstanding: number;
 }
 
+export interface ConfirmationModalConfig {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  confirmVariant?: 'danger' | 'warning' | 'primary';
+  onConfirm: () => void;
+  onCancel?: () => void;
+}
+

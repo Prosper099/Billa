@@ -27,6 +27,7 @@ import {
   ReminderLog,
   ReminderTone,
   UserAccount,
+  ConfirmationModalConfig,
 } from '../types';
 import {
   INITIAL_BUSINESS_PROFILE,
@@ -139,6 +140,17 @@ interface AppContextType {
   isCloudAuthModalOpen: boolean;
   setIsCloudAuthModalOpen: (open: boolean) => void;
   isCloudSyncActive: boolean;
+  confirmationModal: ConfirmationModalConfig | null;
+  requestConfirmation: (options: {
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    confirmVariant?: 'danger' | 'warning' | 'primary';
+    onConfirm: () => void;
+    onCancel?: () => void;
+  }) => void;
+  closeConfirmationModal: () => void;
   resetToDefaultData: () => void;
   clearAllData: () => void;
 }
@@ -271,6 +283,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isAnalyzingCustomerRisk, setIsAnalyzingCustomerRisk] = useState(false);
   const [isAutoScanningReminders, setIsAutoScanningReminders] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [confirmationModal, setConfirmationModal] = useState<ConfirmationModalConfig | null>(null);
+
+  const requestConfirmation = (options: {
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    confirmVariant?: 'danger' | 'warning' | 'primary';
+    onConfirm: () => void;
+    onCancel?: () => void;
+  }) => {
+    setConfirmationModal({
+      isOpen: true,
+      title: options.title,
+      message: options.message,
+      confirmText: options.confirmText || 'Delete',
+      cancelText: options.cancelText || 'Cancel',
+      confirmVariant: options.confirmVariant || 'danger',
+      onConfirm: () => {
+        options.onConfirm();
+        setConfirmationModal(null);
+      },
+      onCancel: () => {
+        if (options.onCancel) options.onCancel();
+        setConfirmationModal(null);
+      },
+    });
+  };
+
+  const closeConfirmationModal = () => {
+    if (confirmationModal?.onCancel) {
+      confirmationModal.onCancel();
+    }
+    setConfirmationModal(null);
+  };
 
   const toggleSidebar = () => {
     setIsSidebarCollapsed((prev) => !prev);
@@ -310,16 +357,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubInvoices = onSnapshot(
       collection(db, 'users', user.uid, 'invoices'),
       (snap) => {
-        if (!snap.empty) {
-          const cloudInvoices: Invoice[] = [];
-          snap.forEach((d) => {
-            cloudInvoices.push(d.data() as Invoice);
-          });
-          cloudInvoices.sort(
-            (a, b) => new Date(b.createdAt || b.issueDate).getTime() - new Date(a.createdAt || a.issueDate).getTime()
-          );
-          setInvoices(cloudInvoices);
-        }
+        const cloudInvoices: Invoice[] = [];
+        snap.forEach((d) => {
+          cloudInvoices.push(d.data() as Invoice);
+        });
+        cloudInvoices.sort(
+          (a, b) => new Date(b.createdAt || b.issueDate).getTime() - new Date(a.createdAt || a.issueDate).getTime()
+        );
+        // Always reflect latest cloud documents
+        setInvoices(cloudInvoices);
       },
       (error) => {
         console.warn('Cloud invoices sync listener notice:', error?.message || error);
@@ -330,13 +376,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubCustomers = onSnapshot(
       collection(db, 'users', user.uid, 'customers'),
       (snap) => {
-        if (!snap.empty) {
-          const cloudCustomers: Customer[] = [];
-          snap.forEach((d) => {
-            cloudCustomers.push(d.data() as Customer);
-          });
-          setCustomers(cloudCustomers);
-        }
+        const cloudCustomers: Customer[] = [];
+        snap.forEach((d) => {
+          cloudCustomers.push(d.data() as Customer);
+        });
+        // Always reflect latest cloud documents
+        setCustomers(cloudCustomers);
       },
       (error) => {
         console.warn('Cloud customers sync listener notice:', error?.message || error);
@@ -347,14 +392,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubReminders = onSnapshot(
       collection(db, 'users', user.uid, 'reminders'),
       (snap) => {
-        if (!snap.empty) {
-          const cloudLogs: ReminderLog[] = [];
-          snap.forEach((d) => {
-            cloudLogs.push(d.data() as ReminderLog);
-          });
-          cloudLogs.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
-          setReminderLogs(cloudLogs);
-        }
+        const cloudLogs: ReminderLog[] = [];
+        snap.forEach((d) => {
+          cloudLogs.push(d.data() as ReminderLog);
+        });
+        cloudLogs.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+        setReminderLogs(cloudLogs);
       },
       (error) => {
         console.warn('Cloud reminders sync listener notice:', error?.message || error);
@@ -650,17 +693,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteInvoice = (id: string) => {
-    setInvoices((prev) => prev.filter((i) => i.id !== id));
+    const targetInvoice = invoices.find((i) => i.id === id);
+
+    setInvoices((prev) => {
+      const next = prev.filter((i) => i.id !== id);
+      try {
+        localStorage.setItem(getAccountKey(activeAccountId, 'invoices'), JSON.stringify(next));
+        localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+
+    // If invoice belonged to a customer, recalculate their financial summaries
+    if (targetInvoice && targetInvoice.customerId) {
+      setCustomers((prev) =>
+        prev.map((cust) => {
+          if (cust.id === targetInvoice.customerId || cust.name.toLowerCase() === targetInvoice.customerName.toLowerCase()) {
+            const newTotalBilled = Math.max(0, cust.totalBilled - targetInvoice.total);
+            const newTotalPaid = targetInvoice.status === 'paid' ? Math.max(0, cust.totalPaid - targetInvoice.total) : cust.totalPaid;
+            const newOutstanding = targetInvoice.status !== 'paid' && targetInvoice.status !== 'cancelled'
+              ? Math.max(0, cust.outstandingBalance - targetInvoice.total)
+              : cust.outstandingBalance;
+
+            const updatedCust: Customer = {
+              ...cust,
+              totalBilled: newTotalBilled,
+              totalPaid: newTotalPaid,
+              outstandingBalance: newOutstanding,
+            };
+
+            if (user) {
+              setDoc(doc(db, 'users', user.uid, 'customers', updatedCust.id), updatedCust, { merge: true }).catch((err) =>
+                console.warn('Cloud sync error (delete invoice - adjust customer):', err)
+              );
+            }
+            return updatedCust;
+          }
+          return cust;
+        })
+      );
+    }
+
     if (user) {
       deleteDoc(doc(db, 'users', user.uid, 'invoices', id)).catch((err) =>
         console.warn('Cloud sync error (delete invoice):', err)
       );
     }
+
     if (selectedInvoice?.id === id) {
       setSelectedInvoice(null);
       setCurrentView('invoices');
     }
-    showToast('Invoice Deleted', 'The invoice has been removed.', 'info');
+    showToast('Invoice Deleted', `Invoice ${targetInvoice?.invoiceNumber || id} was removed successfully.`, 'info');
   };
 
   const markInvoiceAsPaid = (id: string) => {
@@ -1365,6 +1449,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isCloudAuthModalOpen,
         setIsCloudAuthModalOpen,
         isCloudSyncActive: !!user,
+        confirmationModal,
+        requestConfirmation,
+        closeConfirmationModal,
         resetToDefaultData,
         clearAllData,
       }}

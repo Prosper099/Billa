@@ -125,21 +125,29 @@ export const ReceiptScannerModal: React.FC = () => {
     }
   }, [facingMode, stopCamera]);
 
-  // Handle open / close lifecycle
+  // Handle open / close lifecycle & keyboard escape
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsReceiptScannerOpen(false);
+      }
+    };
+
     if (isReceiptScannerOpen) {
       setStep('capture');
       setCaptureMode('options');
       setCapturedImage(null);
       setExtractedData(null);
       setCameraError(null);
+      window.addEventListener('keydown', handleKeyDown);
     } else {
       stopCamera();
     }
     return () => {
       stopCamera();
+      window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isReceiptScannerOpen, stopCamera]);
+  }, [isReceiptScannerOpen, stopCamera, setIsReceiptScannerOpen]);
 
   // Flip front/rear camera
   const handleToggleCamera = () => {
@@ -461,7 +469,12 @@ export const ReceiptScannerModal: React.FC = () => {
   if (!isReceiptScannerOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-md animate-fadeIn overflow-y-auto">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) setIsReceiptScannerOpen(false);
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-md animate-fadeIn overflow-y-auto"
+    >
       {/* Hidden Mobile Camera Input */}
       <input
         type="file"
@@ -483,41 +496,48 @@ export const ReceiptScannerModal: React.FC = () => {
         id="gallery-upload-input"
       />
 
-      <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-slate-200/90 overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Modal Header */}
-        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/90 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/20 shrink-0">
-              <Camera className="w-5 h-5" />
+      <div
+        className={`relative w-full ${
+          step === 'preview' ? 'max-w-3xl' : 'max-w-lg'
+        } bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[88vh] transition-all duration-200`}
+      >
+        {/* Modal Header with Clear Exit Button */}
+        <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50/95 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shadow-indigo-600/20 shrink-0">
+              <Camera className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2 truncate">
+              <h2 className="text-sm sm:text-base font-extrabold text-slate-900 flex items-center gap-1.5 truncate">
                 <span>Receipt Scanner</span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-bold shrink-0">
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-800 font-bold shrink-0">
                   AI Vision
                 </span>
               </h2>
-              <p className="text-xs text-slate-500 truncate">
-                Snap or upload any paper receipt to auto-generate invoices
+              <p className="text-[11px] text-slate-500 truncate">
+                Snap or upload any paper receipt
               </p>
             </div>
           </div>
 
           <button
             type="button"
+            id="btn-close-receipt-scanner-header"
             onClick={() => setIsReceiptScannerOpen(false)}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
-            title="Close"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-200/70 hover:bg-slate-300 text-slate-700 hover:text-slate-900 transition-colors cursor-pointer text-xs font-semibold shrink-0"
+            title="Close modal (Esc)"
+            aria-label="Close"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
+            <span className="hidden sm:inline">Close</span>
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-5">
+        <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4">
           {/* STEP 1: CAPTURE / UPLOAD */}
           {step === 'capture' && (
-            <div className="space-y-4">
+            <div className="space-y-3.5">
               {/* If Live Camera Mode is chosen */}
               {captureMode === 'live' ? (
                 <div className="space-y-3">
@@ -532,28 +552,28 @@ export const ReceiptScannerModal: React.FC = () => {
 
                     {/* Framing Reticle */}
                     {cameraActive && (
-                      <div className="absolute inset-4 sm:inset-8 pointer-events-none border-2 border-indigo-400/50 rounded-2xl flex flex-col justify-between p-4">
-                        <div className="flex justify-between items-center text-indigo-300 text-xs font-mono font-bold bg-slate-950/60 px-3 py-1 rounded-lg self-center backdrop-blur-xs">
+                      <div className="absolute inset-4 sm:inset-6 pointer-events-none border-2 border-indigo-400/50 rounded-2xl flex flex-col justify-between p-3">
+                        <div className="flex justify-between items-center text-indigo-300 text-[10px] font-mono font-bold bg-slate-950/70 px-2.5 py-1 rounded-md self-center backdrop-blur-xs">
                           <span>ALIGN RECEIPT EDGES INSIDE FRAME</span>
                         </div>
                         <div className="flex justify-between">
-                          <div className="w-6 h-6 border-t-2 border-l-2 border-indigo-400 rounded-tl-lg" />
-                          <div className="w-6 h-6 border-t-2 border-r-2 border-indigo-400 rounded-tr-lg" />
+                          <div className="w-5 h-5 border-t-2 border-l-2 border-indigo-400 rounded-tl-md" />
+                          <div className="w-5 h-5 border-t-2 border-r-2 border-indigo-400 rounded-tr-md" />
                         </div>
                         <div className="flex justify-between">
-                          <div className="w-6 h-6 border-b-2 border-l-2 border-indigo-400 rounded-bl-lg" />
-                          <div className="w-6 h-6 border-b-2 border-r-2 border-indigo-400 rounded-br-lg" />
+                          <div className="w-5 h-5 border-b-2 border-l-2 border-indigo-400 rounded-bl-md" />
+                          <div className="w-5 h-5 border-b-2 border-r-2 border-indigo-400 rounded-br-md" />
                         </div>
                       </div>
                     )}
 
                     {/* Live Controls */}
                     {cameraActive && (
-                      <div className="absolute top-3 right-3 flex items-center gap-2">
+                      <div className="absolute top-2.5 right-2.5 flex items-center gap-2">
                         <button
                           type="button"
                           onClick={handleToggleCamera}
-                          className="p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-900 text-white backdrop-blur-md border border-slate-700 transition-colors cursor-pointer shadow-md"
+                          className="p-2 rounded-lg bg-slate-900/80 hover:bg-slate-900 text-white backdrop-blur-md border border-slate-700 transition-colors cursor-pointer shadow-md"
                           title="Switch Camera (Front / Rear)"
                         >
                           <SwitchCamera className="w-4 h-4" />
@@ -563,14 +583,14 @@ export const ReceiptScannerModal: React.FC = () => {
                   </div>
 
                   {/* Shutter Bar */}
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex items-center justify-between gap-2.5 pt-1">
                     <button
                       type="button"
                       onClick={() => {
                         stopCamera();
                         setCaptureMode('options');
                       }}
-                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+                      className="px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
                     >
                       Back to Options
                     </button>
@@ -580,44 +600,44 @@ export const ReceiptScannerModal: React.FC = () => {
                         type="button"
                         id="btn-live-shutter-snap"
                         onClick={handleSnapLivePhoto}
-                        className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-sm shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+                        className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-all cursor-pointer"
                       >
-                        <Camera className="w-5 h-5" />
-                        <span>Capture Receipt</span>
+                        <Camera className="w-4 h-4" />
+                        <span>Capture</span>
                       </button>
                     )}
                   </div>
                 </div>
               ) : (
                 /* Mobile & Desktop Options Grid */
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {cameraError && (
-                    <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                    <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
                       <Info className="w-4 h-4 text-amber-600 shrink-0" />
                       <span>{cameraError}</span>
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {/* 1. Snap with Phone Camera (Direct Native Mobile Action) */}
                     <button
                       type="button"
                       id="btn-mobile-camera-snap"
                       onClick={() => cameraInputRef.current?.click()}
-                      className="group p-5 rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-left transition-all shadow-md shadow-indigo-600/20 active:scale-[0.98] cursor-pointer flex flex-col justify-between min-h-[140px]"
+                      className="group p-4 rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-left transition-all shadow-sm shadow-indigo-600/20 active:scale-[0.98] cursor-pointer flex flex-col justify-between min-h-[120px]"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-white">
-                          <Camera className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white">
+                          <Camera className="w-4 h-4 group-hover:scale-110 transition-transform" />
                         </div>
-                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-white/20 text-white">
-                          Recommended
+                        <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-md bg-white/20 text-white">
+                          Camera
                         </span>
                       </div>
                       <div>
-                        <h3 className="text-base font-bold text-white">Take Photo with Camera</h3>
-                        <p className="text-xs text-indigo-100 mt-1">
-                          Opens your phone camera with auto-focus and flash
+                        <h3 className="text-sm font-bold text-white">Take Photo</h3>
+                        <p className="text-[11px] text-indigo-100 mt-0.5">
+                          Opens camera with auto-focus
                         </p>
                       </div>
                     </button>
@@ -627,45 +647,57 @@ export const ReceiptScannerModal: React.FC = () => {
                       type="button"
                       id="btn-upload-photo-library"
                       onClick={() => galleryInputRef.current?.click()}
-                      className="group p-5 rounded-2xl bg-white hover:bg-slate-50 text-slate-900 border border-slate-200/90 hover:border-indigo-300 text-left transition-all shadow-xs active:scale-[0.98] cursor-pointer flex flex-col justify-between min-h-[140px]"
+                      className="group p-4 rounded-xl bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 hover:border-indigo-300 text-left transition-all shadow-2xs active:scale-[0.98] cursor-pointer flex flex-col justify-between min-h-[120px]"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="w-10 h-10 rounded-xl bg-slate-100 group-hover:bg-indigo-50 text-slate-700 group-hover:text-indigo-600 flex items-center justify-center transition-colors">
-                          <Upload className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <div className="w-8 h-8 rounded-lg bg-slate-100 group-hover:bg-indigo-50 text-slate-700 group-hover:text-indigo-600 flex items-center justify-center transition-colors">
+                          <Upload className="w-4 h-4 group-hover:scale-110 transition-transform" />
                         </div>
-                        <span className="text-[10px] font-bold text-slate-500">
-                          JPG, PNG, WEBP
+                        <span className="text-[10px] font-semibold text-slate-500">
+                          JPG, PNG
                         </span>
                       </div>
                       <div>
-                        <h3 className="text-base font-bold text-slate-900">Choose from Photos</h3>
-                        <p className="text-xs text-slate-500 mt-1">
-                          Select an existing receipt image or screenshot from your device
+                        <h3 className="text-sm font-bold text-slate-900">Choose Photo</h3>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Select receipt image or screenshot
                         </p>
                       </div>
                     </button>
                   </div>
 
                   {/* Secondary Options: Live Viewfinder & Sample Receipt */}
-                  <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+                  <div className="pt-1 flex flex-col sm:flex-row items-center justify-between gap-2">
                     <button
                       type="button"
                       id="btn-open-live-viewfinder"
                       onClick={() => startLiveCamera()}
-                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors cursor-pointer border border-slate-200"
+                      className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors cursor-pointer border border-slate-200"
                     >
-                      <Smartphone className="w-4 h-4 text-slate-600" />
-                      <span>Open Live Viewfinder</span>
+                      <Smartphone className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Live Viewfinder</span>
                     </button>
 
                     <button
                       type="button"
                       id="btn-load-sample-receipt"
                       onClick={handleUseSampleReceipt}
-                      className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition-colors cursor-pointer"
+                      className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition-colors cursor-pointer"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                      <Sparkles className="w-3 h-3 text-indigo-600" />
                       <span>Try Sample Receipt</span>
+                    </button>
+                  </div>
+
+                  {/* Bottom Cancel & Exit Button */}
+                  <div className="pt-2 border-t border-slate-200/80 flex justify-end">
+                    <button
+                      type="button"
+                      id="btn-exit-receipt-scanner-footer"
+                      onClick={() => setIsReceiptScannerOpen(false)}
+                      className="w-full sm:w-auto px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors cursor-pointer"
+                    >
+                      Cancel & Close
                     </button>
                   </div>
                 </div>
@@ -675,36 +707,49 @@ export const ReceiptScannerModal: React.FC = () => {
 
           {/* STEP 2: PROCESSING SCAN */}
           {step === 'processing' && (
-            <div className="py-12 sm:py-16 text-center space-y-6 max-w-md mx-auto">
-              <div className="relative w-20 h-20 mx-auto">
-                <div className="absolute inset-0 rounded-3xl bg-indigo-600/20 animate-ping" />
-                <div className="relative w-20 h-20 rounded-3xl bg-indigo-600 text-white flex items-center justify-center shadow-xl shadow-indigo-600/30">
-                  <Sparkles className="w-9 h-9 animate-spin" />
+            <div className="py-8 sm:py-10 text-center space-y-4 max-w-md mx-auto">
+              <div className="relative w-16 h-16 mx-auto">
+                <div className="absolute inset-0 rounded-2xl bg-indigo-600/20 animate-ping" />
+                <div className="relative w-16 h-16 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/30">
+                  <Sparkles className="w-7 h-7 animate-spin" />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <h3 className="text-lg font-extrabold text-slate-900">
+              <div className="space-y-1">
+                <h3 className="text-base font-extrabold text-slate-900">
                   Scanning Receipt with Billa AI Vision...
                 </h3>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                  Extracting vendor name, line items, quantities, unit prices, tax amounts, and totals.
+                <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                  Extracting line items, prices, and totals.
                 </p>
               </div>
 
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/90 text-left space-y-2.5 text-xs text-slate-600 max-w-xs mx-auto">
-                <div className="flex items-center gap-2 text-indigo-600 font-semibold">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Optimizing photo resolution & contrast</span>
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-left space-y-2 text-xs text-slate-600 max-w-xs mx-auto">
+                <div className="flex items-center gap-2 text-indigo-600 font-semibold text-[11px]">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Optimizing photo resolution</span>
                 </div>
-                <div className="flex items-center gap-2 text-indigo-600 font-semibold">
-                  <CheckCircle2 className="w-4 h-4" />
+                <div className="flex items-center gap-2 text-indigo-600 font-semibold text-[11px]">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>Parsing itemized tabular breakdown</span>
                 </div>
-                <div className="flex items-center gap-2 text-indigo-600 font-semibold">
-                  <CheckCircle2 className="w-4 h-4" />
+                <div className="flex items-center gap-2 text-indigo-600 font-semibold text-[11px]">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>Calculating subtotal & taxes</span>
                 </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep('capture');
+                    setCaptureMode('options');
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Cancel Scan
+                </button>
               </div>
             </div>
           )}
@@ -910,17 +955,26 @@ export const ReceiptScannerModal: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="pt-2 border-t border-slate-200 flex flex-col-reverse sm:flex-row items-center justify-between gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep('capture');
-                    setCaptureMode('options');
-                  }}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
-                >
-                  Scan Another Receipt
-                </button>
+              <div className="pt-2 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep('capture');
+                      setCaptureMode('options');
+                    }}
+                    className="flex-1 sm:flex-none px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors cursor-pointer"
+                  >
+                    Scan Another
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsReceiptScannerOpen(false)}
+                    className="flex-1 sm:flex-none px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 font-semibold text-xs transition-colors cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
 
                 <div className="flex items-center gap-2.5 w-full sm:w-auto">
                   <button

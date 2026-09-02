@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Loader2,
   FileText,
+  Trash2,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -37,6 +38,9 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
     activeCurrency,
     markInvoiceAsPaid,
     setReminderModalInvoice,
+    deleteInvoice,
+    requestConfirmation,
+    setCurrentView,
     showToast,
   } = useApp();
 

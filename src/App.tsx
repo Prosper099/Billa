@@ -18,6 +18,7 @@ import { QuickPromptModal } from './components/QuickPromptModal';
 import { ReminderModal } from './components/ReminderModal';
 import { ReceiptScannerModal } from './components/ReceiptScannerModal';
 import { MobileSidebarDrawer } from './components/MobileSidebarDrawer';
+import { ConfirmationModal } from './components/ConfirmationModal';
 import { ToastContainer } from './components/Toast';
 
 const AppRoot: React.FC = () => {
@@ -118,6 +119,7 @@ const AppRoot: React.FC = () => {
       <ReceiptScannerModal />
       <QuickPromptModal />
       <ReminderModal />
+      <ConfirmationModal />
       <ToastContainer />
     </div>
   );
