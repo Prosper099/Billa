@@ -170,23 +170,23 @@ export const RemindersHubView: React.FC = () => {
   ];
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-fadeIn pb-16">
+    <div className="p-3.5 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fadeIn pb-24 lg:pb-8">
       {/* Header & Quick Action Buttons */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-extrabold text-[#1A1C1E] tracking-tight">AI Follow-Up Reminders</h1>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-[#1A1C1E] tracking-tight">AI Follow-Up Reminders</h1>
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
               <Sparkles className="w-3 h-3 text-indigo-600" />
               <span>Gemini Automated</span>
             </span>
           </div>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             Detect overdue invoices, customize tone schedules, and send automated settlement reminders via Email & WhatsApp
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             id="btn-open-reminder-schedule-config"
             onClick={() => setIsConfigDrawerOpen(true)}

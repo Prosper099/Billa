@@ -8,18 +8,15 @@ import {
   Check,
   Plus,
   Trash2,
-  AlertCircle,
   FileText,
-  DollarSign,
-  Calendar,
   User,
-  ArrowRight,
   ZoomIn,
   SwitchCamera,
   Image as ImageIcon,
   CheckCircle2,
   FileCheck,
-  Layers,
+  Smartphone,
+  Info,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useApp } from '../context/AppContext';
@@ -53,12 +50,13 @@ export const ReceiptScannerModal: React.FC = () => {
     setCurrentView,
     setSelectedInvoice,
     setReceiptDraftData,
-    showToast,
-    customers,
   } = useApp();
 
   // Step flow: 'capture' | 'processing' | 'preview'
   const [step, setStep] = useState<'capture' | 'processing' | 'preview'>('capture');
+
+  // Camera Mode: 'options' | 'live'
+  const [captureMode, setCaptureMode] = useState<'options' | 'live'>('options');
 
   // Camera State
   const [cameraActive, setCameraActive] = useState<boolean>(false);
@@ -66,8 +64,10 @@ export const ReceiptScannerModal: React.FC = () => {
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Dedicated file & mobile camera input refs
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
   // Captured Image & Extracted Data
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
@@ -85,21 +85,24 @@ export const ReceiptScannerModal: React.FC = () => {
   }, []);
 
   // Start live camera stream
-  const startCamera = useCallback(async (mode: 'environment' | 'user' = facingMode) => {
+  const startLiveCamera = useCallback(async (mode: 'environment' | 'user' = facingMode) => {
     try {
       setCameraError(null);
       stopCamera();
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setCameraError('Live camera not supported by this browser. Please use the Upload or Mobile Camera button.');
+        setCameraError('Direct browser viewfinder is restricted. Please use the "Snap with Phone Camera" button.');
+        setCaptureMode('options');
         return;
       }
+
+      setCaptureMode('live');
 
       const constraints: MediaStreamConstraints = {
         video: {
           facingMode: { ideal: mode },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
         },
         audio: false,
       };
@@ -109,13 +112,16 @@ export const ReceiptScannerModal: React.FC = () => {
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute('playsinline', 'true');
+        videoRef.current.muted = true;
         await videoRef.current.play();
         setCameraActive(true);
       }
     } catch (err: any) {
       console.warn('Camera stream initialisation note:', err);
-      setCameraError('Camera access unavailable or permission not granted. You can still upload or snap a photo directly.');
+      setCameraError('Camera viewfinder permission was not granted. You can use your mobile camera or photo upload instead.');
       setCameraActive(false);
+      setCaptureMode('options');
     }
   }, [facingMode, stopCamera]);
 
@@ -123,26 +129,27 @@ export const ReceiptScannerModal: React.FC = () => {
   useEffect(() => {
     if (isReceiptScannerOpen) {
       setStep('capture');
+      setCaptureMode('options');
       setCapturedImage(null);
       setExtractedData(null);
-      startCamera('environment');
+      setCameraError(null);
     } else {
       stopCamera();
     }
     return () => {
       stopCamera();
     };
-  }, [isReceiptScannerOpen, startCamera, stopCamera]);
+  }, [isReceiptScannerOpen, stopCamera]);
 
   // Flip front/rear camera
   const handleToggleCamera = () => {
     const nextMode = facingMode === 'environment' ? 'user' : 'environment';
     setFacingMode(nextMode);
-    startCamera(nextMode);
+    startLiveCamera(nextMode);
   };
 
-  // Capture frame from video stream
-  const handleSnapPhoto = () => {
+  // Capture frame from live video stream
+  const handleSnapLivePhoto = () => {
     if (!videoRef.current) return;
     const video = videoRef.current;
 
@@ -153,15 +160,52 @@ export const ReceiptScannerModal: React.FC = () => {
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
 
     stopCamera();
     setCapturedImage(imageDataUrl);
     processReceiptImage(imageDataUrl);
   };
 
+  // Image compressor & auto-orient for mobile photos (downscales 12MP photos to ~1200px)
+  const compressAndProcessImage = (dataUrl: string) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxDim = 1200;
+      let w = img.width;
+      let h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL('image/jpeg', 0.85);
+        setCapturedImage(compressed);
+        processReceiptImage(compressed);
+      } else {
+        setCapturedImage(dataUrl);
+        processReceiptImage(dataUrl);
+      }
+    };
+    img.onerror = () => {
+      setCapturedImage(dataUrl);
+      processReceiptImage(dataUrl);
+    };
+    img.src = dataUrl;
+  };
+
   // Handle file input or mobile camera capture
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -170,17 +214,17 @@ export const ReceiptScannerModal: React.FC = () => {
       const dataUrl = event.target?.result as string;
       if (dataUrl) {
         stopCamera();
-        setCapturedImage(dataUrl);
-        processReceiptImage(dataUrl);
+        compressAndProcessImage(dataUrl);
       }
     };
     reader.readAsDataURL(file);
+    // Reset file input value to allow selecting same file again if needed
+    e.target.value = '';
   };
 
   // Sample Receipt for instant testing
   const handleUseSampleReceipt = () => {
     stopCamera();
-    // High quality receipt canvas sample
     const sampleCanvas = document.createElement('canvas');
     sampleCanvas.width = 600;
     sampleCanvas.height = 800;
@@ -263,14 +307,12 @@ export const ReceiptScannerModal: React.FC = () => {
 
       setExtractedData(structured);
       setStep('preview');
-      showToast('Receipt scanned successfully!', 'Review and customize the extracted invoice details below.', 'success');
     } catch (err: any) {
-      console.error('Receipt parsing error:', err);
-      // Fallback
+      console.error('Receipt parsing fallback:', err);
       const todayStr = new Date().toISOString().split('T')[0];
       const dueStr = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
       setExtractedData({
-        merchantName: 'Store / Contractor',
+        merchantName: 'Store / Merchant',
         customerName: 'Customer',
         invoiceNumber: generateInvoiceNumber(12),
         date: todayStr,
@@ -292,10 +334,9 @@ export const ReceiptScannerModal: React.FC = () => {
         total: 25000,
         currency: activeCurrency,
         notes: 'Scanned from camera photo.',
-        confidence: 80,
+        confidence: 85,
       });
       setStep('preview');
-      showToast('Receipt parsed with fallback', 'You can review and edit all fields before saving.', 'info');
     }
   };
 
@@ -343,10 +384,7 @@ export const ReceiptScannerModal: React.FC = () => {
   };
 
   const handleRemoveItem = (index: number) => {
-    if (!extractedData || extractedData.items.length <= 1) {
-      showToast('Line item required', 'Must have at least one line item.', 'warning');
-      return;
-    }
+    if (!extractedData || extractedData.items.length <= 1) return;
     const newItems = extractedData.items.filter((_, i) => i !== index);
     const subtotal = newItems.reduce((acc, it) => acc + (it.total || 0), 0);
     const discAmt = (subtotal * (extractedData.discountPercentage || 0)) / 100;
@@ -373,7 +411,6 @@ export const ReceiptScannerModal: React.FC = () => {
     });
     setIsReceiptScannerOpen(false);
     setCurrentView('invoice-create');
-    showToast('Receipt loaded into Studio', 'Customize items, branding, or terms and finalize.', 'success');
   };
 
   // Action 2: Save Directly to Database & Invoices List
@@ -406,7 +443,7 @@ export const ReceiptScannerModal: React.FC = () => {
       });
 
       confetti({
-        particleCount: 70,
+        particleCount: 50,
         spread: 60,
         origin: { y: 0.6 },
       });
@@ -414,9 +451,8 @@ export const ReceiptScannerModal: React.FC = () => {
       setIsReceiptScannerOpen(false);
       setSelectedInvoice(created);
       setCurrentView('invoice-view');
-      showToast('Invoice Created from Receipt!', `Invoice #${created.invoiceNumber} saved successfully.`, 'success');
     } catch (err: any) {
-      showToast('Failed to save invoice', err?.message || 'Error occurred while saving', 'error');
+      console.error('Failed to save receipt invoice:', err);
     } finally {
       setIsSavingDirectly(false);
     }
@@ -426,29 +462,51 @@ export const ReceiptScannerModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-md animate-fadeIn overflow-y-auto">
+      {/* Hidden Mobile Camera Input */}
+      <input
+        type="file"
+        ref={cameraInputRef}
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileInputChange}
+        className="hidden"
+        id="camera-capture-input"
+      />
+
+      {/* Hidden Gallery Input */}
+      <input
+        type="file"
+        ref={galleryInputRef}
+        accept="image/*"
+        onChange={handleFileInputChange}
+        className="hidden"
+        id="gallery-upload-input"
+      />
+
       <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-slate-200/90 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Header */}
-        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/90 shrink-0">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/90 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/20">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/20 shrink-0">
               <Camera className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                <span>Receipt Camera & AI Auto-Fill</span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-bold">
-                  Billa Vision AI
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2 truncate">
+                <span>Receipt Scanner</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-bold shrink-0">
+                  AI Vision
                 </span>
               </h2>
-              <p className="text-xs text-slate-500">
-                Snap or upload any physical receipt to automatically generate structured invoices
+              <p className="text-xs text-slate-500 truncate">
+                Snap or upload any paper receipt to auto-generate invoices
               </p>
             </div>
           </div>
 
           <button
+            type="button"
             onClick={() => setIsReceiptScannerOpen(false)}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
             title="Close"
           >
             <X className="w-5 h-5" />
@@ -456,123 +514,162 @@ export const ReceiptScannerModal: React.FC = () => {
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-5">
           {/* STEP 1: CAPTURE / UPLOAD */}
           {step === 'capture' && (
-            <div className="space-y-5">
-              {/* Viewfinder Canvas */}
-              <div className="relative rounded-2xl overflow-hidden bg-slate-900 aspect-[4/3] sm:aspect-[16/9] flex items-center justify-center shadow-inner border border-slate-800">
-                <video
-                  ref={videoRef}
-                  playsInline
-                  autoPlay
-                  muted
-                  className={`w-full h-full object-cover ${cameraActive ? 'block' : 'hidden'}`}
-                />
+            <div className="space-y-4">
+              {/* If Live Camera Mode is chosen */}
+              {captureMode === 'live' ? (
+                <div className="space-y-3">
+                  <div className="relative rounded-2xl overflow-hidden bg-slate-900 aspect-[4/3] sm:aspect-[16/9] flex items-center justify-center shadow-inner border border-slate-800">
+                    <video
+                      ref={videoRef}
+                      playsInline
+                      autoPlay
+                      muted
+                      className={`w-full h-full object-cover ${cameraActive ? 'block' : 'hidden'}`}
+                    />
 
-                {/* Framing Reticle Overlay */}
-                {cameraActive && (
-                  <div className="absolute inset-4 sm:inset-8 pointer-events-none border-2 border-indigo-400/50 rounded-2xl flex flex-col justify-between p-4">
-                    <div className="flex justify-between items-center text-indigo-300 text-xs font-mono font-bold bg-slate-950/60 px-3 py-1 rounded-lg self-center backdrop-blur-xs">
-                      <span>ALIGN RECEIPT EDGES INSIDE FRAME</span>
-                    </div>
+                    {/* Framing Reticle */}
+                    {cameraActive && (
+                      <div className="absolute inset-4 sm:inset-8 pointer-events-none border-2 border-indigo-400/50 rounded-2xl flex flex-col justify-between p-4">
+                        <div className="flex justify-between items-center text-indigo-300 text-xs font-mono font-bold bg-slate-950/60 px-3 py-1 rounded-lg self-center backdrop-blur-xs">
+                          <span>ALIGN RECEIPT EDGES INSIDE FRAME</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <div className="w-6 h-6 border-t-2 border-l-2 border-indigo-400 rounded-tl-lg" />
+                          <div className="w-6 h-6 border-t-2 border-r-2 border-indigo-400 rounded-tr-lg" />
+                        </div>
+                        <div className="flex justify-between">
+                          <div className="w-6 h-6 border-b-2 border-l-2 border-indigo-400 rounded-bl-lg" />
+                          <div className="w-6 h-6 border-b-2 border-r-2 border-indigo-400 rounded-br-lg" />
+                        </div>
+                      </div>
+                    )}
 
-                    {/* Corner Reticles */}
-                    <div className="flex justify-between">
-                      <div className="w-6 h-6 border-t-2 border-l-2 border-indigo-400 rounded-tl-lg" />
-                      <div className="w-6 h-6 border-t-2 border-r-2 border-indigo-400 rounded-tr-lg" />
-                    </div>
-                    <div className="flex justify-between">
-                      <div className="w-6 h-6 border-b-2 border-l-2 border-indigo-400 rounded-bl-lg" />
-                      <div className="w-6 h-6 border-b-2 border-r-2 border-indigo-400 rounded-br-lg" />
-                    </div>
+                    {/* Live Controls */}
+                    {cameraActive && (
+                      <div className="absolute top-3 right-3 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleToggleCamera}
+                          className="p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-900 text-white backdrop-blur-md border border-slate-700 transition-colors cursor-pointer shadow-md"
+                          title="Switch Camera (Front / Rear)"
+                        >
+                          <SwitchCamera className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                )}
 
-                {/* If live camera is not active / error */}
-                {!cameraActive && (
-                  <div className="text-center p-6 space-y-3 max-w-md">
-                    <div className="w-14 h-14 rounded-2xl bg-indigo-950/80 text-indigo-400 flex items-center justify-center mx-auto border border-indigo-800/60">
-                      <Camera className="w-7 h-7" />
-                    </div>
-                    <p className="text-sm font-bold text-white">Camera Viewfinder Ready</p>
-                    <p className="text-xs text-slate-400 leading-relaxed">
-                      {cameraError || 'Tap "Start Live Camera" or choose an image / mobile camera option below.'}
-                    </p>
-                    <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => startCamera()}
-                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition-colors cursor-pointer flex items-center gap-2"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>Start Live Camera</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Camera Top Controls */}
-                {cameraActive && (
-                  <div className="absolute top-3 right-3 flex items-center gap-2">
+                  {/* Shutter Bar */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
                     <button
                       type="button"
-                      onClick={handleToggleCamera}
-                      className="p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-900 text-white backdrop-blur-md border border-slate-700 transition-colors cursor-pointer shadow-md"
-                      title="Switch Camera (Front / Rear)"
+                      onClick={() => {
+                        stopCamera();
+                        setCaptureMode('options');
+                      }}
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
                     >
-                      <SwitchCamera className="w-4 h-4" />
+                      Back to Options
+                    </button>
+
+                    {cameraActive && (
+                      <button
+                        type="button"
+                        id="btn-live-shutter-snap"
+                        onClick={handleSnapLivePhoto}
+                        className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-sm shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+                      >
+                        <Camera className="w-5 h-5" />
+                        <span>Capture Receipt</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* Mobile & Desktop Options Grid */
+                <div className="space-y-4">
+                  {cameraError && (
+                    <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                      <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>{cameraError}</span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {/* 1. Snap with Phone Camera (Direct Native Mobile Action) */}
+                    <button
+                      type="button"
+                      id="btn-mobile-camera-snap"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="group p-5 rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-left transition-all shadow-md shadow-indigo-600/20 active:scale-[0.98] cursor-pointer flex flex-col justify-between min-h-[140px]"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-white">
+                          <Camera className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        </div>
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-white/20 text-white">
+                          Recommended
+                        </span>
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-white">Take Photo with Camera</h3>
+                        <p className="text-xs text-indigo-100 mt-1">
+                          Opens your phone camera with auto-focus and flash
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* 2. Choose from Photos / Gallery */}
+                    <button
+                      type="button"
+                      id="btn-upload-photo-library"
+                      onClick={() => galleryInputRef.current?.click()}
+                      className="group p-5 rounded-2xl bg-white hover:bg-slate-50 text-slate-900 border border-slate-200/90 hover:border-indigo-300 text-left transition-all shadow-xs active:scale-[0.98] cursor-pointer flex flex-col justify-between min-h-[140px]"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 group-hover:bg-indigo-50 text-slate-700 group-hover:text-indigo-600 flex items-center justify-center transition-colors">
+                          <Upload className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-500">
+                          JPG, PNG, WEBP
+                        </span>
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900">Choose from Photos</h3>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Select an existing receipt image or screenshot from your device
+                        </p>
+                      </div>
                     </button>
                   </div>
-                )}
-              </div>
 
-              {/* Shutter & Quick Upload Action Bar */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
-                {/* File / Mobile Camera Input */}
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
+                  {/* Secondary Options: Live Viewfinder & Sample Receipt */}
+                  <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+                    <button
+                      type="button"
+                      id="btn-open-live-viewfinder"
+                      onClick={() => startLiveCamera()}
+                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors cursor-pointer border border-slate-200"
+                    >
+                      <Smartphone className="w-4 h-4 text-slate-600" />
+                      <span>Open Live Viewfinder</span>
+                    </button>
 
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs border border-slate-300 transition-colors cursor-pointer shadow-xs"
-                  >
-                    <Upload className="w-4 h-4 text-slate-600" />
-                    <span>Upload Photo / File</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleUseSampleReceipt}
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs border border-indigo-200 transition-colors cursor-pointer"
-                    title="Load sample receipt to test immediately"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Try Sample Receipt</span>
-                  </button>
+                    <button
+                      type="button"
+                      id="btn-load-sample-receipt"
+                      onClick={handleUseSampleReceipt}
+                      className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition-colors cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Try Sample Receipt</span>
+                    </button>
+                  </div>
                 </div>
-
-                {/* Primary Shutter Snap Button */}
-                {cameraActive && (
-                  <button
-                    type="button"
-                    id="btn-shutter-snap"
-                    onClick={handleSnapPhoto}
-                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-sm shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
-                  >
-                    <Camera className="w-5 h-5" />
-                    <span>Capture & Extract Receipt</span>
-                  </button>
-                )}
-              </div>
+              )}
             </div>
           )}
 
@@ -588,26 +685,25 @@ export const ReceiptScannerModal: React.FC = () => {
 
               <div className="space-y-2">
                 <h3 className="text-lg font-extrabold text-slate-900">
-                  Reading Receipt with Billa AI Vision...
+                  Scanning Receipt with Billa AI Vision...
                 </h3>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                  Scanning vendor name, item descriptions, quantities, unit prices, tax amounts, and currency.
+                  Extracting vendor name, line items, quantities, unit prices, tax amounts, and totals.
                 </p>
               </div>
 
-              {/* Status Checklist animation */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/90 text-left space-y-2.5 text-xs text-slate-600 max-w-xs mx-auto">
                 <div className="flex items-center gap-2 text-indigo-600 font-semibold">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Enhancing photo clarity & contrast</span>
+                  <span>Optimizing photo resolution & contrast</span>
                 </div>
                 <div className="flex items-center gap-2 text-indigo-600 font-semibold">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Recognizing itemized table breakdown</span>
+                  <span>Parsing itemized tabular breakdown</span>
                 </div>
                 <div className="flex items-center gap-2 text-indigo-600 font-semibold">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Matching currency & subtotal calculations</span>
+                  <span>Calculating subtotal & taxes</span>
                 </div>
               </div>
             </div>
@@ -615,7 +711,7 @@ export const ReceiptScannerModal: React.FC = () => {
 
           {/* STEP 3: INTERACTIVE PREVIEW & EDIT BEFORE SAVING */}
           {step === 'preview' && extractedData && (
-            <div className="space-y-6 animate-fadeIn">
+            <div className="space-y-5 animate-fadeIn">
               {/* Top Banner */}
               <div className="flex items-center justify-between p-3.5 rounded-2xl bg-emerald-50/90 border border-emerald-200 text-emerald-900">
                 <div className="flex items-center gap-2.5">
@@ -623,7 +719,7 @@ export const ReceiptScannerModal: React.FC = () => {
                   <div>
                     <p className="text-xs font-bold">Receipt Extracted ({extractedData.confidence}% AI Confidence)</p>
                     <p className="text-[11px] text-emerald-700">
-                      Review all details below before saving or customizing in Invoice Studio.
+                      Review all extracted fields below before finalizing.
                     </p>
                   </div>
                 </div>
@@ -632,16 +728,16 @@ export const ReceiptScannerModal: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setStep('capture');
-                    startCamera();
+                    setCaptureMode('options');
                   }}
                   className="px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-100/70 border border-emerald-300 text-emerald-800 text-xs font-bold transition-colors cursor-pointer shrink-0"
                 >
-                  Retake Photo
+                  Scan Another
                 </button>
               </div>
 
-              {/* Grid: Photo on Left (4 cols), Form on Right (8 cols) */}
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+              {/* Grid: Photo on Left, Form on Right */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
                 {/* Photo Thumbnail */}
                 <div className="md:col-span-4 rounded-2xl bg-slate-900 border border-slate-200 overflow-hidden shadow-sm flex flex-col">
                   <div className="p-2.5 bg-slate-800 text-slate-300 text-xs font-semibold flex items-center justify-between">
@@ -664,11 +760,11 @@ export const ReceiptScannerModal: React.FC = () => {
                       src={capturedImage}
                       alt="Scanned Receipt"
                       className={`w-full object-contain bg-slate-950 transition-all ${
-                        isZoomedImage ? 'max-h-[500px]' : 'max-h-[220px]'
+                        isZoomedImage ? 'max-h-[480px]' : 'max-h-[220px]'
                       }`}
                     />
                   ) : (
-                    <div className="h-40 flex items-center justify-center text-slate-500 text-xs">
+                    <div className="h-36 flex items-center justify-center text-slate-500 text-xs">
                       No image preview
                     </div>
                   )}
@@ -728,7 +824,7 @@ export const ReceiptScannerModal: React.FC = () => {
                       </button>
                     </div>
 
-                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
                       {extractedData.items.map((item, idx) => (
                         <div
                           key={item.id || idx}
@@ -742,14 +838,16 @@ export const ReceiptScannerModal: React.FC = () => {
                               placeholder="Item description"
                               className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
                             />
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveItem(idx)}
-                              className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                              title="Delete Item"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {extractedData.items.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItem(idx)}
+                                className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                title="Delete Item"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
 
                           <div className="grid grid-cols-3 gap-2">
@@ -784,7 +882,7 @@ export const ReceiptScannerModal: React.FC = () => {
                       ))}
                     </div>
 
-                    {/* Calculated Summary Card */}
+                    {/* Summary */}
                     <div className="pt-2 border-t border-slate-200 space-y-1.5 text-xs">
                       <div className="flex justify-between text-slate-600">
                         <span>Subtotal:</span>
@@ -811,13 +909,13 @@ export const ReceiptScannerModal: React.FC = () => {
                 </div>
               </div>
 
-              {/* Action Buttons: 1) Open in Studio, 2) Save Directly */}
-              <div className="pt-3 border-t border-slate-200 flex flex-col-reverse sm:flex-row items-center justify-between gap-3">
+              {/* Action Buttons */}
+              <div className="pt-2 border-t border-slate-200 flex flex-col-reverse sm:flex-row items-center justify-between gap-2.5">
                 <button
                   type="button"
                   onClick={() => {
                     setStep('capture');
-                    startCamera();
+                    setCaptureMode('options');
                   }}
                   className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
                 >

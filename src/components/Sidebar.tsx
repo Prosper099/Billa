@@ -14,6 +14,8 @@ import {
   CreditCard,
   Copy,
   Check,
+  ChevronLeft,
+  LogOut,
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { useApp, ActiveView } from '../context/AppContext';
@@ -36,10 +38,21 @@ export const Sidebar: React.FC = () => {
     setIsCloudAuthModalOpen,
     showToast,
     logout,
+    isSidebarCollapsed,
+    setIsSidebarCollapsed,
   } = useApp();
 
-  const { user } = useFirebaseAuth();
+  const { user, signOutUser } = useFirebaseAuth();
   const [copiedAccount, setCopiedAccount] = useState(false);
+
+  const handleLogout = async () => {
+    logout({ clearLocalData: false });
+    await signOutUser();
+  };
+
+  if (isSidebarCollapsed) {
+    return null;
+  }
 
   const handleCopyAccount = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -90,8 +103,6 @@ export const Sidebar: React.FC = () => {
       id: 'ai-advisor',
       label: 'AI Advisor',
       icon: <Sparkles className="w-4 h-4 shrink-0" />,
-      badge: 'PRO',
-      badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200',
     },
     {
       id: 'settings',
@@ -103,13 +114,25 @@ export const Sidebar: React.FC = () => {
   return (
     <aside className="hidden lg:flex flex-col w-72 bg-white border-r border-slate-200/90 p-5 shrink-0 h-screen sticky top-0 justify-between select-none shadow-[1px_0_4px_rgba(0,0,0,0.02)] overflow-y-auto">
       <div className="space-y-4">
-        {/* Logo Section */}
-        <div
-          id="billa-sidebar-logo"
-          onClick={() => setCurrentView('dashboard')}
-          className="cursor-pointer transition-opacity hover:opacity-90 py-1"
-        >
-          <BrandLogo size="md" showTagline={true} />
+        {/* Logo & Close Button Section */}
+        <div className="flex items-center justify-between gap-2">
+          <div
+            id="billa-sidebar-logo"
+            onClick={() => setCurrentView('dashboard')}
+            className="cursor-pointer transition-opacity hover:opacity-90 py-1 flex-1 min-w-0"
+          >
+            <BrandLogo size="md" showTagline={true} />
+          </div>
+          <button
+            type="button"
+            id="btn-sidebar-collapse"
+            onClick={() => setIsSidebarCollapsed(true)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+            title="Close sidebar"
+            aria-label="Close sidebar"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Primary Action Buttons */}
@@ -281,11 +304,12 @@ export const Sidebar: React.FC = () => {
           <button
             type="button"
             id="sidebar-logout-btn"
-            onClick={() => logout()}
-            className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-bold transition-all cursor-pointer shrink-0 border border-rose-200/60"
+            onClick={handleLogout}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-bold transition-all cursor-pointer shrink-0 border border-rose-200/60"
             title="Log out of workspace"
           >
-            Log Out
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Log Out</span>
           </button>
         </div>
       </div>

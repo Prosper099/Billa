@@ -140,9 +140,9 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({ custom
   const riskColors = getRiskColor(assessment?.riskLevel);
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-fadeIn pb-16">
+    <div className="p-3.5 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fadeIn pb-24 lg:pb-8">
       {/* Top Navigation & Actions Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <button
           id="btn-back-to-directory"
           onClick={onBack}
@@ -152,7 +152,7 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({ custom
           <span>Back to Customer Directory</span>
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             id="btn-edit-customer-profile"
             onClick={() => setIsEditModalOpen(true)}

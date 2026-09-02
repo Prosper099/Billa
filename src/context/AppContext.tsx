@@ -131,6 +131,9 @@ interface AppContextType {
   setIsReceiptScannerOpen: (open: boolean) => void;
   receiptDraftData: any;
   setReceiptDraftData: (data: any) => void;
+  isSidebarCollapsed: boolean;
+  setIsSidebarCollapsed: (collapsed: boolean | ((prev: boolean) => boolean)) => void;
+  toggleSidebar: () => void;
   isMobileSidebarOpen: boolean;
   setIsMobileSidebarOpen: (open: boolean) => void;
   isCloudAuthModalOpen: boolean;
@@ -262,11 +265,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isQuickPromptOpen, setIsQuickPromptOpen] = useState(false);
   const [isReceiptScannerOpen, setIsReceiptScannerOpen] = useState(false);
   const [receiptDraftData, setReceiptDraftData] = useState<any>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isCloudAuthModalOpen, setIsCloudAuthModalOpen] = useState(false);
   const [isAnalyzingCustomerRisk, setIsAnalyzingCustomerRisk] = useState(false);
   const [isAutoScanningReminders, setIsAutoScanningReminders] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => !prev);
+  };
 
   // Real-time Cloud Synchronization with Firebase Firestore
   useEffect(() => {
@@ -1349,6 +1357,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsReceiptScannerOpen,
         receiptDraftData,
         setReceiptDraftData,
+        isSidebarCollapsed,
+        setIsSidebarCollapsed,
+        toggleSidebar,
         isMobileSidebarOpen,
         setIsMobileSidebarOpen,
         isCloudAuthModalOpen,

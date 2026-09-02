@@ -8,6 +8,8 @@ import {
   Globe,
   User,
   LogOut,
+  PanelLeftOpen,
+  PanelLeftClose,
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { useApp } from '../context/AppContext';
@@ -24,6 +26,9 @@ export const TopHeader: React.FC = () => {
     setIsQuickPromptOpen,
     setIsReceiptScannerOpen,
     setIsMobileSidebarOpen,
+    isSidebarCollapsed,
+    setIsSidebarCollapsed,
+    toggleSidebar,
     businessProfile,
     logout,
   } = useApp();
@@ -31,8 +36,8 @@ export const TopHeader: React.FC = () => {
   const { user, signOutUser } = useFirebaseAuth();
 
   const handleLogout = async () => {
-    await signOutUser();
     logout();
+    await signOutUser();
   };
 
   const getTitle = () => {
@@ -62,7 +67,7 @@ export const TopHeader: React.FC = () => {
 
   return (
     <header className="no-print bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-3.5 sm:px-4 lg:px-8 py-3 sticky top-0 z-30 flex items-center justify-between shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
-      {/* Left: Mobile Hamburger & Logo / Page Title */}
+      {/* Left: Mobile Hamburger & Desktop Toggle + Title */}
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Mobile Hamburger Drawer Trigger */}
         <button
@@ -75,9 +80,29 @@ export const TopHeader: React.FC = () => {
           <Menu className="w-5 h-5" />
         </button>
 
+        {/* Desktop Sidebar Open Toggle (when collapsed) */}
+        {isSidebarCollapsed && (
+          <button
+            type="button"
+            id="btn-desktop-sidebar-open"
+            onClick={() => setIsSidebarCollapsed(false)}
+            className="hidden lg:flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-slate-200 hover:border-slate-300 text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 text-xs font-semibold transition-all cursor-pointer mr-2"
+            title="Open Sidebar"
+          >
+            <PanelLeftOpen className="w-4 h-4 text-indigo-600" />
+            <span>Open Menu</span>
+          </button>
+        )}
+
         <div className="lg:hidden flex items-center">
           <BrandLogo size="sm" />
         </div>
+
+        {isSidebarCollapsed && (
+          <div className="hidden lg:flex items-center mr-3">
+            <BrandLogo size="sm" showTagline={false} />
+          </div>
+        )}
 
         <div className="hidden lg:block">
           <h1 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">

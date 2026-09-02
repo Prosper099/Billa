@@ -176,12 +176,12 @@ export const CustomersView: React.FC = () => {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-fadeIn pb-16">
+    <div className="p-3.5 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fadeIn pb-24 lg:pb-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-[#1A1C1E] tracking-tight">Customer CRM & Ledgers</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#1A1C1E] tracking-tight">Customer CRM & Ledgers</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             Manage customer contact information, complete payment history, CRM interaction notes, and AI reliability risk scores
           </p>
         </div>
@@ -189,7 +189,7 @@ export const CustomersView: React.FC = () => {
         <button
           id="btn-add-customer-open"
           onClick={() => setIsAddModalOpen(true)}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md shadow-indigo-600/20 transition-all active:scale-[0.98] cursor-pointer"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-indigo-600/20 transition-all active:scale-[0.98] cursor-pointer"
         >
           <Plus className="w-4 h-4 stroke-[2.5]" />
           <span>Add Customer</span>

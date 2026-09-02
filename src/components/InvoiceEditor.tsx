@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { InvoiceItem, Invoice, Customer } from '../types';
-import { formatCurrency, generateInvoiceNumber } from '../utils/formatters';
+import { formatCurrency, generateInvoiceNumber, CURRENCIES } from '../utils/formatters';
 import { InvoiceDocument } from './InvoiceDocument';
 
 export const InvoiceEditor: React.FC = () => {
@@ -39,11 +39,19 @@ export const InvoiceEditor: React.FC = () => {
   } = useApp();
 
   // Form State
+  const [currency, setCurrency] = useState<any>(activeCurrency || businessProfile.preferredCurrency || 'NGN');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(customers[0]?.id || '');
   const [customerName, setCustomerName] = useState<string>(customers[0]?.name || '');
   const [customerEmail, setCustomerEmail] = useState<string>(customers[0]?.email || '');
   const [customerPhone, setCustomerPhone] = useState<string>(customers[0]?.phone || '');
   const [customerAddress, setCustomerAddress] = useState<string>(customers[0]?.address || '');
+
+  // Keep currency synced with activeCurrency if not customized
+  useEffect(() => {
+    if (activeCurrency) {
+      setCurrency(activeCurrency);
+    }
+  }, [activeCurrency]);
 
   const [invoiceNumber, setInvoiceNumber] = useState<string>(() => generateInvoiceNumber(invoices.length));
   const [issueDate, setIssueDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
@@ -194,7 +202,7 @@ export const InvoiceEditor: React.FC = () => {
       status: 'pending',
       notes,
       paymentTerms,
-      currency: activeCurrency,
+      currency: currency || activeCurrency,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -212,6 +220,7 @@ export const InvoiceEditor: React.FC = () => {
     discountPercentage,
     notes,
     paymentTerms,
+    currency,
     activeCurrency,
   ]);
 
@@ -248,7 +257,7 @@ export const InvoiceEditor: React.FC = () => {
       status: 'pending',
       notes,
       paymentTerms,
-      currency: activeCurrency,
+      currency: currency || activeCurrency,
     });
 
     setSelectedInvoice(created);
@@ -256,9 +265,9 @@ export const InvoiceEditor: React.FC = () => {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-fadeIn">
+    <div className="p-3.5 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-5 sm:space-y-6 pb-28 lg:pb-8 animate-fadeIn">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setCurrentView('invoices')}
@@ -438,14 +447,14 @@ export const InvoiceEditor: React.FC = () => {
             </div>
           </div>
 
-          {/* Section 2: Invoice Metadata (Dates & Reference) */}
+          {/* Section 2: Invoice Metadata (Dates & Reference & Currency) */}
           <div className="rounded-2xl bg-white border border-slate-200/90 p-5 space-y-4 shadow-sm">
             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-3 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-indigo-600" />
-              <span>2. Invoice Number & Dates</span>
+              <span>2. Invoice Details & Currency</span>
             </h2>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
               <div className="space-y-1">
                 <label className="text-slate-600 font-semibold">Invoice Number</label>
                 <input
@@ -477,6 +486,22 @@ export const InvoiceEditor: React.FC = () => {
                   onChange={(e) => setDueDate(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-500 transition-colors shadow-2xs"
                 />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-600 font-semibold">Currency</label>
+                <select
+                  aria-label="Invoice Currency"
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value as any)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-bold focus:bg-white focus:outline-none focus:border-indigo-500 transition-colors shadow-2xs cursor-pointer"
+                >
+                  {Object.values(CURRENCIES).map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.code} ({c.symbol}) - {c.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
@@ -552,7 +577,7 @@ export const InvoiceEditor: React.FC = () => {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[11px] text-slate-500 font-medium">Unit Price ({activeCurrency === 'USD' ? '$' : '₦'})</label>
+                      <label className="text-[11px] text-slate-500 font-medium">Unit Price ({CURRENCIES[currency]?.symbol || CURRENCIES[activeCurrency]?.symbol || ''})</label>
                       <input
                         type="number"
                         min="0"
@@ -568,7 +593,7 @@ export const InvoiceEditor: React.FC = () => {
                     <div className="space-y-1">
                       <label className="text-[11px] text-slate-500 font-medium">Line Total</label>
                       <div className="px-2.5 py-1.5 rounded-lg bg-indigo-50/70 border border-indigo-100 text-indigo-700 font-mono font-bold text-right">
-                        {formatCurrency(item.total, activeCurrency)}
+                        {formatCurrency(item.total, currency || activeCurrency)}
                       </div>
                     </div>
                   </div>
@@ -599,7 +624,7 @@ export const InvoiceEditor: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="text-slate-600 font-semibold">Delivery Fee ({activeCurrency === 'USD' ? '$' : '₦'})</label>
+                <label className="text-slate-600 font-semibold">Delivery Fee ({CURRENCIES[currency]?.symbol || CURRENCIES[activeCurrency]?.symbol || ''})</label>
                 <input
                   type="number"
                   min="0"
@@ -664,7 +689,7 @@ export const InvoiceEditor: React.FC = () => {
               className="w-full flex items-center justify-center gap-2 py-3.5 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm shadow-xl shadow-indigo-600/25 transition-all active:scale-[0.99] cursor-pointer"
             >
               <Save className="w-4 h-4 stroke-[2.5]" />
-              <span>Generate & Finalize Invoice ({formatCurrency(totals.total, activeCurrency)})</span>
+              <span>Generate & Finalize Invoice ({formatCurrency(totals.total, currency || activeCurrency)})</span>
             </button>
           </div>
         </form>
@@ -678,7 +703,7 @@ export const InvoiceEditor: React.FC = () => {
                 <span>Live Document Preview</span>
               </span>
               <span className="text-xs font-mono font-bold text-indigo-600">
-                Total: {formatCurrency(totals.total, activeCurrency)}
+                Total: {formatCurrency(totals.total, currency || activeCurrency)}
               </span>
             </div>
 

@@ -107,7 +107,7 @@ export const DashboardView: React.FC = () => {
   }, [metrics.totalInvoiced, metrics.collected, activeCurrency]);
 
   return (
-    <div className="px-3.5 py-4 sm:px-6 sm:py-6 lg:px-8 max-w-7xl mx-auto space-y-5 sm:space-y-7 animate-fadeIn">
+    <div className="px-3.5 py-4 sm:px-6 sm:py-6 lg:px-8 max-w-7xl mx-auto space-y-5 sm:space-y-7 pb-24 lg:pb-8 animate-fadeIn">
       {/* 1. Clean, Streamlined Executive Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
         <div>
@@ -142,7 +142,7 @@ export const DashboardView: React.FC = () => {
             title="Refresh AI financial insight"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 ${aiSummary.isLoading ? 'animate-spin' : ''}`} />
-            <span className="hidden xs:inline">Refresh Insight</span>
+            <span>Refresh Insight</span>
           </button>
         </div>
       </div>

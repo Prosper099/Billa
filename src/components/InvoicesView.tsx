@@ -109,12 +109,12 @@ export const InvoicesView: React.FC = () => {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-fadeIn">
+    <div className="p-3.5 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-5 sm:space-y-6 pb-24 lg:pb-8 animate-fadeIn">
       {/* Top Header & Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-[#1A1C1E] tracking-tight">Invoices</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Manage, track, and generate AI follow-ups for all billing records</p>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#1A1C1E] tracking-tight">Invoices</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Manage, track, and generate AI follow-ups for all billing records</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -150,9 +150,9 @@ export const InvoicesView: React.FC = () => {
       </div>
 
       {/* Filter Tabs & Search Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-1">
         {/* Status Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 md:pb-0 scrollbar-none">
           {[
             { id: 'all', label: 'All Invoices', count: counts.all },
             { id: 'overdue', label: 'Overdue', count: counts.overdue, alert: counts.overdue > 0 },
@@ -197,7 +197,7 @@ export const InvoicesView: React.FC = () => {
             placeholder="Search client, invoice #, service..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-xs"
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-xs"
           />
           {searchQuery && (
             <button
@@ -210,7 +210,7 @@ export const InvoicesView: React.FC = () => {
         </div>
       </div>
 
-      {/* Invoice Table Card */}
+      {/* Invoice Content Card */}
       <div className="rounded-2xl bg-white border border-slate-200/90 overflow-hidden shadow-sm">
         {filteredInvoices.length === 0 ? (
           <div className="py-16 px-6 text-center space-y-4 max-w-md mx-auto">
@@ -229,128 +229,218 @@ export const InvoicesView: React.FC = () => {
             </div>
             <button
               onClick={() => setCurrentView('invoice-create')}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>Create First Invoice</span>
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/80 text-slate-500 font-semibold border-b border-slate-200 select-none">
-                <tr>
-                  <th className="py-3.5 px-4 sm:px-6">Invoice #</th>
-                  <th className="py-3.5 px-4">Customer</th>
-                  <th className="py-3.5 px-4 hidden md:table-cell">Issue Date</th>
-                  <th className="py-3.5 px-4">Due Date</th>
-                  <th className="py-3.5 px-4">Amount</th>
-                  <th className="py-3.5 px-4">Status</th>
-                  <th className="py-3.5 px-4 sm:px-6 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredInvoices.map((inv) => {
-                  return (
-                    <tr
-                      key={inv.id}
-                      className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
+          <>
+            {/* Mobile Card Layout (sm:hidden) - Uncramped, spacious cards */}
+            <div className="sm:hidden divide-y divide-slate-100">
+              {filteredInvoices.map((inv) => (
+                <div
+                  key={inv.id}
+                  className="p-4 space-y-3 hover:bg-slate-50/80 transition-colors"
+                  onClick={() => {
+                    setSelectedInvoice(inv);
+                    setCurrentView('invoice-view');
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="font-mono font-bold text-indigo-600 text-xs">
+                        {inv.invoiceNumber}
+                      </span>
+                      <h4 className="font-bold text-slate-900 text-sm mt-0.5">
+                        {inv.customerName}
+                      </h4>
+                      {inv.items[0]?.description && (
+                        <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">
+                          {inv.items[0].description}
+                        </p>
+                      )}
+                    </div>
+                    <div>{getStatusBadge(inv)}</div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+                    <span>Due {formatDate(inv.dueDate)}</span>
+                    <span className="text-base font-black font-mono text-slate-900">
+                      {formatCurrency(inv.total, activeCurrency)}
+                    </span>
+                  </div>
+
+                  {/* Mobile Action Buttons Bar */}
+                  <div
+                    className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {inv.status !== 'paid' && (
+                      <button
+                        onClick={() => setReminderModalInvoice(inv)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 cursor-pointer"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>Remind</span>
+                      </button>
+                    )}
+
+                    {inv.status !== 'paid' && (
+                      <button
+                        onClick={() => markInvoiceAsPaid(inv.id)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700 font-bold text-xs border border-slate-200 cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Paid</span>
+                      </button>
+                    )}
+
+                    <button
                       onClick={() => {
                         setSelectedInvoice(inv);
                         setCurrentView('invoice-view');
                       }}
+                      className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 cursor-pointer"
+                      title="View document"
                     >
-                      {/* Invoice Number */}
-                      <td className="py-4 px-4 sm:px-6 font-mono font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
-                        {inv.invoiceNumber}
-                      </td>
+                      <ExternalLink className="w-4 h-4" />
+                    </button>
 
-                      {/* Customer Name & Company */}
-                      <td className="py-4 px-4">
-                        <div className="font-semibold text-slate-900">{inv.customerName}</div>
-                        <div className="text-[11px] text-slate-500 truncate max-w-[180px]">
-                          {inv.items[0]?.description}
-                        </div>
-                      </td>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Delete invoice ${inv.invoiceNumber}?`)) {
+                          deleteInvoice(inv.id);
+                        }
+                      }}
+                      className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 cursor-pointer"
+                      title="Delete invoice"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
 
-                      {/* Issue Date */}
-                      <td className="py-4 px-4 text-slate-500 hidden md:table-cell">
-                        {formatDate(inv.issueDate)}
-                      </td>
-
-                      {/* Due Date */}
-                      <td className="py-4 px-4 text-slate-700 font-medium">
-                        {formatDate(inv.dueDate)}
-                      </td>
-
-                      {/* Total Amount */}
-                      <td className="py-4 px-4 font-mono-num font-extrabold text-slate-900 text-sm">
-                        {formatCurrency(inv.total, activeCurrency)}
-                      </td>
-
-                      {/* Status Badge */}
-                      <td className="py-4 px-4">
-                        {getStatusBadge(inv)}
-                      </td>
-
-                      {/* Action buttons (click stopped propagation) */}
-                      <td
-                        className="py-4 px-4 sm:px-6 text-right space-x-1 whitespace-nowrap"
-                        onClick={(e) => e.stopPropagation()}
+            {/* Desktop Table Layout (hidden sm:block) */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50/80 text-slate-500 font-semibold border-b border-slate-200 select-none">
+                  <tr>
+                    <th className="py-3.5 px-4 sm:px-6">Invoice #</th>
+                    <th className="py-3.5 px-4">Customer</th>
+                    <th className="py-3.5 px-4 hidden md:table-cell">Issue Date</th>
+                    <th className="py-3.5 px-4">Due Date</th>
+                    <th className="py-3.5 px-4">Amount</th>
+                    <th className="py-3.5 px-4">Status</th>
+                    <th className="py-3.5 px-4 sm:px-6 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredInvoices.map((inv) => {
+                    return (
+                      <tr
+                        key={inv.id}
+                        className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                        onClick={() => {
+                          setSelectedInvoice(inv);
+                          setCurrentView('invoice-view');
+                        }}
                       >
-                        {inv.status !== 'paid' && (
-                          <button
-                            onClick={() => setReminderModalInvoice(inv)}
-                            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors cursor-pointer"
-                            title="Generate AI Follow-up"
-                          >
-                            <MessageCircle className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                        {/* Invoice Number */}
+                        <td className="py-4 px-4 sm:px-6 font-mono font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                          {inv.invoiceNumber}
+                        </td>
 
-                        {inv.status !== 'paid' ? (
-                          <button
-                            onClick={() => markInvoiceAsPaid(inv.id)}
-                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700 border border-slate-200 transition-colors cursor-pointer"
-                            title="Mark as paid"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                          </button>
-                        ) : (
-                          <span className="p-1.5 text-emerald-600 inline-block">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                          </span>
-                        )}
+                        {/* Customer Name & Company */}
+                        <td className="py-4 px-4">
+                          <div className="font-semibold text-slate-900">{inv.customerName}</div>
+                          <div className="text-[11px] text-slate-500 truncate max-w-[180px]">
+                            {inv.items[0]?.description}
+                          </div>
+                        </td>
 
-                        <button
-                          onClick={() => {
-                            setSelectedInvoice(inv);
-                            setCurrentView('invoice-view');
-                          }}
-                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border border-slate-200 transition-colors cursor-pointer"
-                          title="View document"
+                        {/* Issue Date */}
+                        <td className="py-4 px-4 text-slate-500 hidden md:table-cell">
+                          {formatDate(inv.issueDate)}
+                        </td>
+
+                        {/* Due Date */}
+                        <td className="py-4 px-4 text-slate-700 font-medium">
+                          {formatDate(inv.dueDate)}
+                        </td>
+
+                        {/* Total Amount */}
+                        <td className="py-4 px-4 font-mono-num font-extrabold text-slate-900 text-sm">
+                          {formatCurrency(inv.total, activeCurrency)}
+                        </td>
+
+                        {/* Status Badge */}
+                        <td className="py-4 px-4">
+                          {getStatusBadge(inv)}
+                        </td>
+
+                        {/* Action buttons (click stopped propagation) */}
+                        <td
+                          className="py-4 px-4 sm:px-6 text-right space-x-1 whitespace-nowrap"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </button>
+                          {inv.status !== 'paid' && (
+                            <button
+                              onClick={() => setReminderModalInvoice(inv)}
+                              className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors cursor-pointer"
+                              title="Generate AI Follow-up"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                            </button>
+                          )}
 
-                        <button
-                          onClick={() => {
-                            if (window.confirm(`Delete invoice ${inv.invoiceNumber}?`)) {
-                              deleteInvoice(inv.id);
-                            }
-                          }}
-                          className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                          title="Delete invoice"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                          {inv.status !== 'paid' ? (
+                            <button
+                              onClick={() => markInvoiceAsPaid(inv.id)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+                              title="Mark as paid"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <span className="p-1.5 text-emerald-600 inline-block">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            </span>
+                          )}
+
+                          <button
+                            onClick={() => {
+                              setSelectedInvoice(inv);
+                              setCurrentView('invoice-view');
+                            }}
+                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border border-slate-200 transition-colors cursor-pointer"
+                            title="View document"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Delete invoice ${inv.invoiceNumber}?`)) {
+                                deleteInvoice(inv.id);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                            title="Delete invoice"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>

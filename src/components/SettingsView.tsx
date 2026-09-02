@@ -94,11 +94,11 @@ export const SettingsView: React.FC = () => {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto space-y-8 animate-fadeIn">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="p-3.5 sm:p-6 lg:p-8 max-w-4xl mx-auto space-y-6 sm:space-y-8 animate-fadeIn pb-24 lg:pb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-[#1A1C1E] tracking-tight">Business Settings</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#1A1C1E] tracking-tight">Business Settings</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             Configure company branding, official bank settlement details, and invoice rules
           </p>
         </div>

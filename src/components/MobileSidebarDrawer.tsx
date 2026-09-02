@@ -42,10 +42,16 @@ export const MobileSidebarDrawer: React.FC = () => {
     logout,
   } = useApp();
 
-  const { user } = useFirebaseAuth();
+  const { user, signOutUser } = useFirebaseAuth();
   const [copiedAccount, setCopiedAccount] = useState(false);
 
   if (!isMobileSidebarOpen) return null;
+
+  const handleLogout = async () => {
+    setIsMobileSidebarOpen(false);
+    logout();
+    await signOutUser();
+  };
 
   const handleNavClick = (view: ActiveView) => {
     setCurrentView(view);
@@ -98,8 +104,6 @@ export const MobileSidebarDrawer: React.FC = () => {
       id: 'ai-advisor',
       label: 'AI Financial Advisor',
       icon: <Sparkles className="w-5 h-5 shrink-0" />,
-      badge: 'PRO',
-      badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200',
     },
     {
       id: 'settings',
@@ -298,10 +302,8 @@ export const MobileSidebarDrawer: React.FC = () => {
 
             <button
               type="button"
-              onClick={() => {
-                setIsMobileSidebarOpen(false);
-                logout();
-              }}
+              id="mobile-drawer-logout-btn"
+              onClick={handleLogout}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-colors cursor-pointer border border-rose-200/60 shrink-0"
               title="Sign out of workspace"
             >
