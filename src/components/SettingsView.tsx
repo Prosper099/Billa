@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useFirebaseAuth } from '../context/AuthContext';
+import firebaseConfig from '../../firebase-applet-config.json';
 import { CURRENCIES } from '../utils/formatters';
 import { CurrencyCode } from '../types';
 
@@ -41,6 +42,7 @@ export const SettingsView: React.FC = () => {
     currentAccount,
     switchAccount,
     deleteAccount,
+    requestConfirmation,
     setIsAuthModalOpen,
     setIsCloudAuthModalOpen,
     logout,
@@ -159,7 +161,7 @@ export const SettingsView: React.FC = () => {
                   ? `Your business profile, invoices, customers, and AI reminders are securely synced to your cloud account (${user.email}). Any changes made on this device will instantly sync in real time.`
                   : 'Your business profile, invoices, and customer CRM are active in this workspace session.'}
               </p>
-              <div className="flex items-center gap-4 mt-2 text-[11px] text-slate-500 font-medium">
+              <div className="flex items-center gap-4 mt-2 text-[11px] text-slate-500 font-medium flex-wrap">
                 <span className="flex items-center gap-1">
                   <Smartphone className="w-3.5 h-3.5 text-indigo-500" /> Phone & Tablet
                 </span>
@@ -168,6 +170,9 @@ export const SettingsView: React.FC = () => {
                 </span>
                 <span className="flex items-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> 256-Bit Encryption
+                </span>
+                <span className="flex items-center gap-1 bg-slate-100/90 px-2 py-0.5 rounded-md font-mono text-[10px] text-slate-600">
+                  Firebase: {firebaseConfig.projectId}
                 </span>
               </div>
             </div>
@@ -237,9 +242,13 @@ export const SettingsView: React.FC = () => {
               type="button"
               id="btn-settings-logout-fresh"
               onClick={() => {
-                if (window.confirm('Log out of current session and sign into a fresh business account with clean details?')) {
-                  logout({ clearLocalData: true });
-                }
+                requestConfirmation({
+                  title: 'Log Out & Start Fresh?',
+                  message: 'Log out of your current session and sign into a fresh business account with clean details?',
+                  confirmText: 'Log Out',
+                  confirmVariant: 'warning',
+                  onConfirm: () => logout({ clearLocalData: true }),
+                });
               }}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition-all active:scale-95 cursor-pointer"
             >
@@ -315,9 +324,13 @@ export const SettingsView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        if (window.confirm(`Delete workspace "${acc.businessName}" and all associated data?`)) {
-                          deleteAccount(acc.id);
-                        }
+                        requestConfirmation({
+                          title: 'Delete Workspace?',
+                          message: `Delete workspace "${acc.businessName}" and all associated invoices and customer ledgers?`,
+                          confirmText: 'Delete Workspace',
+                          confirmVariant: 'danger',
+                          onConfirm: () => deleteAccount(acc.id),
+                        });
                       }}
                       className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                       title="Delete profile"
@@ -578,9 +591,13 @@ export const SettingsView: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                if (window.confirm('Clear all invoices, customers, and reminders to start with a fresh clean workspace (values set to null/zero)?')) {
-                  clearAllData();
-                }
+                requestConfirmation({
+                  title: 'Clear Workspace Slate?',
+                  message: 'Clear all invoices, customers, and reminder logs to start fresh? Values will be reset to zero.',
+                  confirmText: 'Clear All Data',
+                  confirmVariant: 'danger',
+                  onConfirm: () => clearAllData(),
+                });
               }}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-amber-50 text-slate-600 hover:text-amber-700 border border-slate-200 font-medium transition-colors cursor-pointer text-xs"
             >
@@ -592,9 +609,13 @@ export const SettingsView: React.FC = () => {
               type="button"
               id="btn-settings-bottom-logout"
               onClick={() => {
-                if (window.confirm('Reset current session and log in with fresh business details?')) {
-                  logout({ clearLocalData: true });
-                }
+                requestConfirmation({
+                  title: 'Reset & Sign Out?',
+                  message: 'Reset your current local session and log in with fresh business details?',
+                  confirmText: 'Reset & Sign Out',
+                  confirmVariant: 'warning',
+                  onConfirm: () => logout({ clearLocalData: true }),
+                });
               }}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold transition-colors cursor-pointer text-xs"
             >

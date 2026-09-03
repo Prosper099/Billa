@@ -43,6 +43,9 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({ custom
     setSelectedInvoice,
     setReminderModalInvoice,
     markInvoiceAsPaid,
+    deleteInvoice,
+    deleteCustomer,
+    requestConfirmation,
     addCustomerNote,
     deleteCustomerNote,
     analyzeCustomerRiskWithAI,
@@ -181,6 +184,27 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({ custom
           >
             <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
             <span>Create Invoice</span>
+          </button>
+
+          <button
+            id="btn-delete-customer-profile"
+            onClick={() => {
+              requestConfirmation({
+                title: 'Delete Customer?',
+                message: `Are you sure you want to permanently delete ${customer.name} and all interaction notes? Invoices will be unlinked but retained.`,
+                confirmText: 'Delete Customer',
+                confirmVariant: 'danger',
+                onConfirm: () => {
+                  deleteCustomer(customer.id);
+                  onBack();
+                },
+              });
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-slate-500 hover:text-rose-600 font-bold text-xs shadow-2xs transition-all cursor-pointer"
+            title="Delete customer record"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Delete</span>
           </button>
         </div>
       </div>
@@ -548,6 +572,23 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({ custom
                               </button>
                             </>
                           )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              requestConfirmation({
+                                title: 'Delete Invoice?',
+                                message: `Are you sure you want to delete invoice ${inv.invoiceNumber}? This will adjust ${customer.name}'s balance.`,
+                                confirmText: 'Delete Invoice',
+                                confirmVariant: 'danger',
+                                onConfirm: () => deleteInvoice(inv.id),
+                              });
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                            title="Delete invoice"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -659,7 +700,16 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({ custom
                             {formatDate(note.createdAt)}
                           </span>
                           <button
-                            onClick={() => deleteCustomerNote(customer.id, note.id)}
+                            type="button"
+                            onClick={() => {
+                              requestConfirmation({
+                                title: 'Delete Note?',
+                                message: 'Are you sure you want to remove this CRM note?',
+                                confirmText: 'Delete Note',
+                                confirmVariant: 'danger',
+                                onConfirm: () => deleteCustomerNote(customer.id, note.id),
+                              });
+                            }}
                             className="text-slate-400 hover:text-rose-600 p-1 transition-colors cursor-pointer"
                             title="Delete Note"
                           >

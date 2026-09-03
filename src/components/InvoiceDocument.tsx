@@ -437,6 +437,32 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
               <Printer className="w-3.5 h-3.5" />
               <span>Print</span>
             </button>
+
+            {/* Delete Invoice Button */}
+            <button
+              id="btn-doc-delete"
+              onClick={() => {
+                requestConfirmation({
+                  title: 'Delete Invoice?',
+                  message: `Are you sure you want to delete invoice ${invoice.invoiceNumber}? This action cannot be undone.`,
+                  confirmText: 'Delete Invoice',
+                  confirmVariant: 'danger',
+                  onConfirm: () => {
+                    deleteInvoice(invoice.id);
+                    if (onBack) {
+                      onBack();
+                    } else {
+                      setCurrentView('invoices');
+                    }
+                  },
+                });
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 text-xs font-semibold border border-slate-200 hover:border-rose-200 transition-colors cursor-pointer"
+              title="Delete invoice"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete</span>
+            </button>
           </div>
         </div>
       )}

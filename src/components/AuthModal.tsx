@@ -33,6 +33,7 @@ export const AuthModal: React.FC = () => {
     createAccount,
     switchAccount,
     deleteAccount,
+    requestConfirmation,
     clearAllData,
     resetToDefaultData,
     setIsCloudAuthModalOpen,
@@ -351,9 +352,13 @@ export const AuthModal: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => {
-                              if (window.confirm(`Delete account "${acc.businessName}" and all its records?`)) {
-                                deleteAccount(acc.id);
-                              }
+                              requestConfirmation({
+                                title: 'Delete Account Workspace?',
+                                message: `Delete account "${acc.businessName}" and all of its associated records?`,
+                                confirmText: 'Delete Account',
+                                confirmVariant: 'danger',
+                                onConfirm: () => deleteAccount(acc.id),
+                              });
                             }}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                             title="Delete Account"
@@ -372,10 +377,16 @@ export const AuthModal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    if (window.confirm('Clear all invoices and customers in current workspace for a clean slate?')) {
-                      clearAllData();
-                      setIsAuthModalOpen(false);
-                    }
+                    requestConfirmation({
+                      title: 'Clear Workspace?',
+                      message: 'Clear all invoices and customers in the current workspace for a clean slate?',
+                      confirmText: 'Clear All Data',
+                      confirmVariant: 'danger',
+                      onConfirm: () => {
+                        clearAllData();
+                        setIsAuthModalOpen(false);
+                      },
+                    });
                   }}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-800 border border-slate-200 text-xs font-bold transition-colors cursor-pointer"
                 >

@@ -870,7 +870,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteCustomer = (id: string) => {
-    setCustomers((prev) => prev.filter((c) => c.id !== id));
+    const target = customers.find((c) => c.id === id);
+    setCustomers((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      try {
+        localStorage.setItem(getAccountKey(activeAccountId, 'customers'), JSON.stringify(next));
+        localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
     if (user) {
       deleteDoc(doc(db, 'users', user.uid, 'customers', id)).catch((err) =>
         console.warn('Cloud sync error (delete customer):', err)
@@ -880,7 +888,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSelectedCustomer(null);
       setCurrentView('customers');
     }
-    showToast('Customer Removed', 'Customer record has been deleted.', 'info');
+    showToast('Customer Removed', `${target?.name || 'Customer'} was removed from your directory.`, 'info');
   };
 
   const addCustomerNote = (
@@ -898,8 +906,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       author,
     };
 
-    setCustomers((prev) =>
-      prev.map((cust) => {
+    setCustomers((prev) => {
+      const next = prev.map((cust) => {
         if (cust.id === customerId) {
           const updatedNotes = [newNote, ...(cust.notes || [])];
           const updatedCust = { ...cust, notes: updatedNotes };
@@ -914,15 +922,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return updatedCust;
         }
         return cust;
-      })
-    );
+      });
+      try {
+        localStorage.setItem(getAccountKey(activeAccountId, 'customers'), JSON.stringify(next));
+        localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
 
     showToast('Note Added', 'Note saved to customer profile.', 'success');
   };
 
   const deleteCustomerNote = (customerId: string, noteId: string) => {
-    setCustomers((prev) =>
-      prev.map((cust) => {
+    setCustomers((prev) => {
+      const next = prev.map((cust) => {
         if (cust.id === customerId) {
           const updatedNotes = (cust.notes || []).filter((n) => n.id !== noteId);
           const updatedCust = { ...cust, notes: updatedNotes };
@@ -937,8 +950,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return updatedCust;
         }
         return cust;
-      })
-    );
+      });
+      try {
+        localStorage.setItem(getAccountKey(activeAccountId, 'customers'), JSON.stringify(next));
+        localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
     showToast('Note Deleted', 'Customer note removed.', 'info');
   };
 

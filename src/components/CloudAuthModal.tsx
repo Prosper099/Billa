@@ -14,10 +14,14 @@ import {
   LogOut,
   Cloud,
   CloudOff,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 import { useFirebaseAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { BillaAIIcon } from './BrandLogo';
+import firebaseConfig from '../../firebase-applet-config.json';
 
 export const CloudAuthModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
   isOpen,
@@ -39,12 +43,26 @@ export const CloudAuthModal: React.FC<{ isOpen: boolean; onClose: () => void }> 
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isUnauthorizedDomain, setIsUnauthorizedDomain] = useState(false);
+  const [domainCopied, setDomainCopied] = useState(false);
+
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+
+  const copyCurrentDomain = () => {
+    if (navigator?.clipboard && currentHostname) {
+      navigator.clipboard.writeText(currentHostname);
+      setDomainCopied(true);
+      setTimeout(() => setDomainCopied(false), 2500);
+      showToast('Domain Copied', `${currentHostname} copied to clipboard.`);
+    }
+  };
 
   if (!isOpen) return null;
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    setIsUnauthorizedDomain(false);
     setLoading(true);
 
     try {
@@ -80,6 +98,7 @@ export const CloudAuthModal: React.FC<{ isOpen: boolean; onClose: () => void }> 
 
   const handleGoogleSignIn = async () => {
     setErrorMessage('');
+    setIsUnauthorizedDomain(false);
     setLoading(true);
     try {
       await signInWithGoogle();
@@ -94,8 +113,9 @@ export const CloudAuthModal: React.FC<{ isOpen: boolean; onClose: () => void }> 
         msg = 'The sign-in popup was blocked by your browser. Please allow popups or open in a new tab.';
       } else if (err.code === 'auth/popup-closed-by-user') {
         msg = 'Sign-in popup was closed before completing.';
-      } else if (err.code === 'auth/unauthorized-domain') {
-        msg = 'This domain is not authorized in Firebase Auth. Please verify your Firebase project settings.';
+      } else if (err.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
+        setIsUnauthorizedDomain(true);
+        msg = 'This domain is not yet on the Authorized Domains list for Firebase project billaai-ten.';
       } else if (err.message) {
         msg = err.message;
       }
@@ -226,8 +246,52 @@ export const CloudAuthModal: React.FC<{ isOpen: boolean; onClose: () => void }> 
               </div>
 
               {errorMessage && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
-                  {errorMessage}
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium space-y-2">
+                  <p>{errorMessage}</p>
+
+                  {isUnauthorizedDomain && (
+                    <div className="p-2.5 rounded-lg bg-white/90 border border-rose-200 text-slate-700 space-y-2 text-[11px]">
+                      <div className="font-semibold text-slate-900">
+                        How to authorize this domain in Firebase:
+                      </div>
+                      <ol className="list-decimal pl-4 space-y-1 text-slate-600">
+                        <li>
+                          Open <span className="font-semibold text-indigo-700">Firebase Console</span> for project <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-indigo-900 font-bold">{firebaseConfig.projectId}</code>
+                        </li>
+                        <li>
+                          Go to <strong>Authentication</strong> &rarr; <strong>Settings</strong> &rarr; <strong>Authorized domains</strong>
+                        </li>
+                        <li>
+                          Click <strong>Add domain</strong> and paste the host without <code className="text-rose-600 bg-rose-50 px-1 rounded">https://</code> or trailing <code className="text-rose-600 bg-rose-50 px-1 rounded">/</code>:
+                        </li>
+                      </ol>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          readOnly
+                          value={currentHostname}
+                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 font-mono text-[10px] text-slate-800 select-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={copyCurrentDomain}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shrink-0 transition-colors cursor-pointer"
+                        >
+                          {domainCopied ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-300" />
+                              <span>Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              <span>Copy Domain</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -313,6 +377,16 @@ export const CloudAuthModal: React.FC<{ isOpen: boolean; onClose: () => void }> 
                     </button>
                   </p>
                 )}
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
+                <span>
+                  Firebase Project:{' '}
+                  <strong className="text-slate-600 font-mono font-semibold">{firebaseConfig.projectId}</strong>
+                </span>
+                <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                  <Cloud className="w-3 h-3" /> Ready
+                </span>
               </div>
             </div>
           )}

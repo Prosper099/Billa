@@ -18,6 +18,7 @@ import {
   ShieldAlert,
   ArrowRight,
   Filter,
+  Trash2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatCurrency } from '../utils/formatters';
@@ -30,6 +31,8 @@ export const CustomersView: React.FC = () => {
     invoices,
     activeCurrency,
     addCustomer,
+    deleteCustomer,
+    requestConfirmation,
     setCurrentView,
     selectedCustomer,
     setSelectedCustomer,
@@ -400,7 +403,25 @@ export const CustomersView: React.FC = () => {
                       {custInvoices.length} invoice(s) • {notesCount} note(s)
                     </span>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          requestConfirmation({
+                            title: 'Delete Customer?',
+                            message: `Are you sure you want to permanently delete "${cust.name}" from your customer directory?`,
+                            confirmText: 'Delete Customer',
+                            confirmVariant: 'danger',
+                            onConfirm: () => deleteCustomer(cust.id),
+                          });
+                        }}
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                        title="Delete customer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+
                       <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 group-hover:translate-x-0.5 transition-transform">
                         <span>View Profile & CRM</span>
                         <ArrowRight className="w-3.5 h-3.5" />
