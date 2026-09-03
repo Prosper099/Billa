@@ -10,6 +10,7 @@ import {
 import { BillaAIIcon } from './BrandLogo';
 import { useApp } from '../context/AppContext';
 import { generateInvoiceNumber } from '../utils/formatters';
+import { extractInvoiceFromPrompt } from '../utils/promptExtractor';
 
 export const QuickPromptModal: React.FC = () => {
   const {
@@ -40,63 +41,73 @@ export const QuickPromptModal: React.FC = () => {
 
     setIsProcessing(true);
 
+    let extracted: any = null;
+
     try {
       const res = await fetch('/api/ai/smart-extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: text }),
+        body: JSON.stringify({ prompt: text, defaultCurrency: activeCurrency }),
       });
 
       if (res.ok) {
         const data = await res.json();
-        const extracted = data.invoice || {};
-
-        // Calculate totals
-        const items = (extracted.items && extracted.items.length > 0)
-          ? extracted.items
-          : [{ description: 'Professional Services', quantity: 1, unitPrice: 50000, total: 50000 }];
-
-        const subtotal = items.reduce((sum: number, it: any) => sum + (it.total || it.quantity * it.unitPrice || 0), 0);
-        const discountPercentage = extracted.discountPercentage || 0;
-        const discountAmount = (subtotal * discountPercentage) / 100;
-        const total = Math.max(0, subtotal - discountAmount);
-
-        const newInv = createInvoice({
-          invoiceNumber: generateInvoiceNumber(invoices.length),
-          customerId: 'cust-extracted',
-          customerName: extracted.customerName || 'Valued Client',
-          customerEmail: extracted.customerEmail || 'client@example.com',
-          customerPhone: extracted.customerPhone || '+234 800 000 0000',
-          customerAddress: extracted.customerAddress || 'Lagos, Nigeria',
-          issueDate: new Date().toISOString().split('T')[0],
-          dueDate: extracted.dueDate || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
-          items,
-          subtotal,
-          discountPercentage,
-          discountAmount,
-          taxRate: 0,
-          taxAmount: 0,
-          deliveryFee: 0,
-          total,
-          status: 'pending',
-          notes: extracted.notes || 'Created via Billa AI smart extraction.',
-          paymentTerms: 'Payment due on receipt.',
-          currency: activeCurrency,
-        });
-
-        setIsQuickPromptOpen(false);
-        setPromptText('');
-        setSelectedInvoice(newInv);
-        setCurrentView('invoice-view');
-        showToast('Invoice Created by AI', `Extracted invoice for ${extracted.customerName || 'Client'}.`);
-      } else {
-        showToast('AI Extraction Failed', 'Please try phrasing with client name and amount.', 'error');
+        if (data.invoice && data.invoice.customerName) {
+          extracted = data.invoice;
+        }
       }
     } catch {
-      showToast('Extraction Error', 'Could not parse prompt.', 'error');
-    } finally {
-      setIsProcessing(false);
+      // Backend fetch skipped/failed, will use instant deterministic NLP parser
     }
+
+    // Resilient fallback: parse text directly with NLP extractor
+    if (!extracted) {
+      extracted = extractInvoiceFromPrompt(text, activeCurrency);
+    }
+
+    // Calculate totals & items
+    const items =
+      extracted.items && extracted.items.length > 0
+        ? extracted.items
+        : [{ description: 'Professional Services', quantity: 1, unitPrice: 50000, total: 50000 }];
+
+    const subtotal = items.reduce(
+      (sum: number, it: any) => sum + (it.total || it.quantity * it.unitPrice || 0),
+      0
+    );
+    const discountPercentage = extracted.discountPercentage || 0;
+    const discountAmount = (subtotal * discountPercentage) / 100;
+    const total = Math.max(0, subtotal - discountAmount);
+
+    const newInv = createInvoice({
+      invoiceNumber: generateInvoiceNumber(invoices.length),
+      customerId: 'cust-extracted',
+      customerName: extracted.customerName || 'Valued Client',
+      customerEmail: extracted.customerEmail || 'client@example.com',
+      customerPhone: extracted.customerPhone || '+234 800 000 0000',
+      customerAddress: extracted.customerAddress || 'Lagos, Nigeria',
+      issueDate: new Date().toISOString().split('T')[0],
+      dueDate: extracted.dueDate || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
+      items,
+      subtotal,
+      discountPercentage,
+      discountAmount,
+      taxRate: 0,
+      taxAmount: 0,
+      deliveryFee: 0,
+      total,
+      status: 'pending',
+      notes: extracted.notes || 'Created via Billa AI smart extraction.',
+      paymentTerms: 'Payment due on receipt.',
+      currency: activeCurrency,
+    });
+
+    setIsQuickPromptOpen(false);
+    setPromptText('');
+    setSelectedInvoice(newInv);
+    setCurrentView('invoice-view');
+    showToast('Invoice Created by AI', `Extracted invoice for ${extracted.customerName || 'Client'}.`, 'success');
+    setIsProcessing(false);
   };
 
   return (

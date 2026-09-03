@@ -3,6 +3,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
+import { extractInvoiceFromPrompt } from './src/utils/promptExtractor';
 
 dotenv.config();
 
@@ -15,17 +16,24 @@ app.use(express.urlencoded({ limit: '30mb', extended: true }));
 // Lazy-initialized Gemini AI client
 let aiClient: GoogleGenAI | null = null;
 function getGeminiClient(): GoogleGenAI | null {
-  if (!aiClient && process.env.GEMINI_API_KEY) {
+  if (!process.env.GEMINI_API_KEY) {
+    return null;
+  }
+  if (!aiClient) {
     aiClient = new GoogleGenAI({
       apiKey: process.env.GEMINI_API_KEY,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
     });
   }
   return aiClient;
+}
+
+// Safe Promise timeout helper
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: any;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Operation timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 // Resilient Gemini Generator with automatic model fallback for 503 / high demand spikes
@@ -37,15 +45,12 @@ async function generateContentSafe(params: {
   const ai = getGeminiClient();
   if (!ai) return null;
 
-  // Candidates in priority order
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-3.7-flash', 'gemini-flash-latest'];
+  // Candidates in priority order from gemini-api skill
+  const modelsToTry = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
 
   for (const model of modelsToTry) {
     try {
       const config: any = {};
-      if (model.includes('3.7')) {
-        config.thinkingConfig = { thinkingLevel: 'LOW' };
-      }
       if (params.responseMimeType) {
         config.responseMimeType = params.responseMimeType;
       }
@@ -53,17 +58,20 @@ async function generateContentSafe(params: {
         config.responseSchema = params.responseSchema;
       }
 
-      const response = await ai.models.generateContent({
-        model,
-        contents: params.contents,
-        config: Object.keys(config).length > 0 ? config : undefined,
-      });
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model,
+          contents: params.contents,
+          config: Object.keys(config).length > 0 ? config : undefined,
+        }),
+        3800
+      );
 
       if (response && response.text) {
         return response.text;
       }
     } catch (err: any) {
-      console.warn(`Gemini generation note: model '${model}' encountered (${err?.status || err?.message || 'demand spike'}), trying alternative fallback...`);
+      console.warn(`Gemini note for model '${model}':`, err?.status || err?.message || 'demand spike/timeout');
     }
   }
 
@@ -79,14 +87,11 @@ async function generateContentSafeWithImage(params: {
   const ai = getGeminiClient();
   if (!ai) return null;
 
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-3.7-flash', 'gemini-flash-latest'];
+  const modelsToTry = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
 
   for (const model of modelsToTry) {
     try {
       const config: any = {};
-      if (model.includes('3.7')) {
-        config.thinkingConfig = { thinkingLevel: 'LOW' };
-      }
       if (params.responseMimeType) {
         config.responseMimeType = params.responseMimeType;
       }
@@ -94,17 +99,20 @@ async function generateContentSafeWithImage(params: {
         config.responseSchema = params.responseSchema;
       }
 
-      const response = await ai.models.generateContent({
-        model,
-        contents: { parts: params.parts },
-        config: Object.keys(config).length > 0 ? config : undefined,
-      });
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model,
+          contents: { parts: params.parts },
+          config: Object.keys(config).length > 0 ? config : undefined,
+        }),
+        5500
+      );
 
       if (response && response.text) {
         return response.text;
       }
     } catch (err: any) {
-      console.warn(`Gemini vision generation note: model '${model}' encountered (${err?.status || err?.message || 'demand spike'}), trying alternative fallback...`);
+      console.warn(`Gemini vision note for model '${model}':`, err?.status || err?.message || 'demand spike/timeout');
     }
   }
 
@@ -437,23 +445,8 @@ app.post('/api/ai/smart-extract', async (req, res) => {
     return res.status(400).json({ error: 'Prompt text is required' });
   }
 
-  const fallbackInvoice = {
-    customerName: 'Fatima Aliyu',
-    customerEmail: 'fatima@example.com',
-    customerPhone: '+234 803 123 4567',
-    customerAddress: 'Victoria Island, Lagos',
-    items: [
-      {
-        description: 'UI Design Sprints',
-        quantity: 3,
-        unitPrice: 120000,
-        total: 360000,
-      },
-    ],
-    discountPercentage: 5,
-    notes: 'Created via Billa AI smart extraction.',
-    dueDate: new Date(Date.now() + 10 * 86400000).toISOString().split('T')[0],
-  };
+  // Always compute an accurate deterministic fallback based on the actual prompt
+  const fallbackInvoice = extractInvoiceFromPrompt(promptText, defaultCurrency);
 
   try {
     const prompt = `You are Billa's smart invoice builder. Extract structured invoice data from this user text:
@@ -502,15 +495,17 @@ Extract:
 
     if (text) {
       const parsed = JSON.parse(text);
-      return res.json({ invoice: parsed, source: 'gemini' });
+      if (parsed && parsed.customerName && parsed.items && parsed.items.length > 0) {
+        return res.json({ invoice: parsed, source: 'gemini' });
+      }
     }
   } catch (error) {
-    // Graceful fallback
+    console.warn('Smart extract Gemini note: Falling back to resilient prompt parser', error);
   }
 
   return res.json({
     invoice: fallbackInvoice,
-    source: 'fallback',
+    source: 'nlp-parser',
   });
 });
 

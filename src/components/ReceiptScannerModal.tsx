@@ -75,6 +75,9 @@ export const ReceiptScannerModal: React.FC = () => {
   const [isZoomedImage, setIsZoomedImage] = useState<boolean>(false);
   const [isSavingDirectly, setIsSavingDirectly] = useState<boolean>(false);
 
+  // Drag & drop state
+  const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
+
   // Stop camera stream utility
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -90,24 +93,28 @@ export const ReceiptScannerModal: React.FC = () => {
       setCameraError(null);
       stopCamera();
 
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setCameraError('Direct browser viewfinder is restricted. Please use the "Snap with Phone Camera" button.');
+      if (typeof window === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraError('Direct browser viewfinder requires HTTPS / device permission. Tap "Take Photo" below for direct camera capture.');
         setCaptureMode('options');
         return;
       }
 
       setCaptureMode('live');
 
-      const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode: { ideal: mode },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      };
+      let stream: MediaStream | null = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: mode } },
+          audio: false,
+        });
+      } catch {
+        // Broad fallback constraint for older or strict webcam devices
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
       if (videoRef.current) {
@@ -119,7 +126,7 @@ export const ReceiptScannerModal: React.FC = () => {
       }
     } catch (err: any) {
       console.warn('Camera stream initialisation note:', err);
-      setCameraError('Camera viewfinder permission was not granted. You can use your mobile camera or photo upload instead.');
+      setCameraError('Direct camera permission was blocked or unavailable. You can use "Take Photo" or "Choose Photo" to scan your receipt directly.');
       setCameraActive(false);
       setCaptureMode('options');
     }
@@ -139,6 +146,7 @@ export const ReceiptScannerModal: React.FC = () => {
       setCapturedImage(null);
       setExtractedData(null);
       setCameraError(null);
+      setIsDraggingOver(false);
       window.addEventListener('keydown', handleKeyDown);
     } else {
       stopCamera();
@@ -148,6 +156,37 @@ export const ReceiptScannerModal: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isReceiptScannerOpen, stopCamera, setIsReceiptScannerOpen]);
+
+  // Global clipboard paste listener for screenshots / copied images
+  useEffect(() => {
+    if (!isReceiptScannerOpen || step !== 'capture') return;
+
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const file = items[i].getAsFile();
+          if (file) {
+            setStep('processing');
+            stopCamera();
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const dataUrl = event.target?.result as string;
+              if (dataUrl) {
+                compressAndProcessImage(dataUrl);
+              }
+            };
+            reader.readAsDataURL(file);
+          }
+          break;
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [isReceiptScannerOpen, step, stopCamera]);
 
   // Flip front/rear camera
   const handleToggleCamera = () => {
@@ -217,17 +256,43 @@ export const ReceiptScannerModal: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Immediate visual feedback
+    setStep('processing');
+    stopCamera();
+
     const reader = new FileReader();
     reader.onload = (event) => {
       const dataUrl = event.target?.result as string;
       if (dataUrl) {
-        stopCamera();
         compressAndProcessImage(dataUrl);
       }
+    };
+    reader.onerror = () => {
+      setStep('capture');
+      setCameraError('Failed to read image file. Please try selecting another file.');
     };
     reader.readAsDataURL(file);
     // Reset file input value to allow selecting same file again if needed
     e.target.value = '';
+  };
+
+  // Handle Drag & Drop of receipt images
+  const handleDropReceipt = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && (file.type.startsWith('image/') || file.type.includes('pdf'))) {
+      setStep('processing');
+      stopCamera();
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target?.result as string;
+        if (dataUrl) {
+          compressAndProcessImage(dataUrl);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   // Sample Receipt for instant testing
@@ -272,15 +337,20 @@ export const ReceiptScannerModal: React.FC = () => {
   // Send image to backend Gemini OCR endpoint
   const processReceiptImage = async (imageBase64: string) => {
     setStep('processing');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 18000);
+
     try {
       const response = await fetch('/api/ai/parse-receipt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           imageBase64,
           defaultCurrency: activeCurrency,
         }),
       });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error('Failed to process receipt with AI');
@@ -475,32 +545,50 @@ export const ReceiptScannerModal: React.FC = () => {
       }}
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-md animate-fadeIn overflow-y-auto"
     >
-      {/* Hidden Mobile Camera Input */}
+      {/* Mobile / Device Camera Input */}
       <input
         type="file"
         ref={cameraInputRef}
-        accept="image/*"
+        accept="image/*,image/heic,image/heif"
         capture="environment"
         onChange={handleFileInputChange}
-        className="hidden"
+        className="sr-only opacity-0 absolute pointer-events-none w-px h-px -z-10"
         id="camera-capture-input"
+        tabIndex={-1}
+        aria-hidden="true"
       />
 
-      {/* Hidden Gallery Input */}
+      {/* Gallery / File Picker Input */}
       <input
         type="file"
         ref={galleryInputRef}
-        accept="image/*"
+        accept="image/*,image/heic,image/heif,.pdf"
         onChange={handleFileInputChange}
-        className="hidden"
+        className="sr-only opacity-0 absolute pointer-events-none w-px h-px -z-10"
         id="gallery-upload-input"
+        tabIndex={-1}
+        aria-hidden="true"
       />
 
       <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (step === 'capture') setIsDraggingOver(true);
+        }}
+        onDragLeave={() => setIsDraggingOver(false)}
+        onDrop={handleDropReceipt}
         className={`relative w-full ${
           step === 'preview' ? 'max-w-3xl' : 'max-w-lg'
         } bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[88vh] transition-all duration-200`}
       >
+        {/* Drag & Drop Visual Overlay */}
+        {isDraggingOver && (
+          <div className="absolute inset-0 z-50 bg-indigo-600/90 text-white backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center border-4 border-dashed border-white/60 m-2 rounded-2xl animate-pulse">
+            <Upload className="w-12 h-12 mb-2 animate-bounce" />
+            <h3 className="text-base font-extrabold">Drop Receipt Image Here</h3>
+            <p className="text-xs text-indigo-100 mt-1">Release to auto-scan with Billa AI Vision</p>
+          </div>
+        )}
         {/* Modal Header with Clear Exit Button */}
         <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50/95 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -620,10 +708,21 @@ export const ReceiptScannerModal: React.FC = () => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {/* 1. Snap with Phone Camera (Direct Native Mobile Action) */}
-                    <button
-                      type="button"
+                    <label
+                      htmlFor="camera-capture-input"
                       id="btn-mobile-camera-snap"
-                      onClick={() => cameraInputRef.current?.click()}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          cameraInputRef.current?.click();
+                        }
+                      }}
+                      onClick={() => {
+                        try {
+                          cameraInputRef.current?.click();
+                        } catch (_) {}
+                      }}
                       className="group p-4 rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-left transition-all shadow-sm shadow-indigo-600/20 active:scale-[0.98] cursor-pointer flex flex-col justify-between min-h-[120px]"
                     >
                       <div className="flex items-center justify-between">
@@ -640,13 +739,24 @@ export const ReceiptScannerModal: React.FC = () => {
                           Opens camera with auto-focus
                         </p>
                       </div>
-                    </button>
+                    </label>
 
                     {/* 2. Choose from Photos / Gallery */}
-                    <button
-                      type="button"
+                    <label
+                      htmlFor="gallery-upload-input"
                       id="btn-upload-photo-library"
-                      onClick={() => galleryInputRef.current?.click()}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          galleryInputRef.current?.click();
+                        }
+                      }}
+                      onClick={() => {
+                        try {
+                          galleryInputRef.current?.click();
+                        } catch (_) {}
+                      }}
                       className="group p-4 rounded-xl bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 hover:border-indigo-300 text-left transition-all shadow-2xs active:scale-[0.98] cursor-pointer flex flex-col justify-between min-h-[120px]"
                     >
                       <div className="flex items-center justify-between">
@@ -654,7 +764,7 @@ export const ReceiptScannerModal: React.FC = () => {
                           <Upload className="w-4 h-4 group-hover:scale-110 transition-transform" />
                         </div>
                         <span className="text-[10px] font-semibold text-slate-500">
-                          JPG, PNG
+                          JPG, PNG, PDF
                         </span>
                       </div>
                       <div>
@@ -663,7 +773,13 @@ export const ReceiptScannerModal: React.FC = () => {
                           Select receipt image or screenshot
                         </p>
                       </div>
-                    </button>
+                    </label>
+                  </div>
+
+                  {/* Desktop Drag & Paste Helper */}
+                  <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-500 flex items-center justify-between gap-2">
+                    <span className="truncate">💡 Drag & drop receipts or press Ctrl+V to paste</span>
+                    <span className="text-[10px] font-mono text-slate-400 shrink-0">HEIC / JPG / PNG</span>
                   </div>
 
                   {/* Secondary Options: Live Viewfinder & Sample Receipt */}
