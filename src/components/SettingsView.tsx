@@ -46,6 +46,7 @@ export const SettingsView: React.FC = () => {
     setIsAuthModalOpen,
     setIsCloudAuthModalOpen,
     logout,
+    openWorkspaceOnboarding,
   } = useApp();
 
   const { user, isCloudSyncActive, signOutUser } = useFirebaseAuth();
@@ -254,6 +255,17 @@ export const SettingsView: React.FC = () => {
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Log Out & Start Fresh</span>
+            </button>
+
+            <button
+              type="button"
+              id="btn-settings-personalize-workspace"
+              onClick={() => openWorkspaceOnboarding()}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold text-xs transition-colors cursor-pointer"
+              title="Re-open workspace setup and live invoice branding"
+            >
+              <Building2 className="w-3.5 h-3.5" />
+              <span>Workspace Setup & Name</span>
             </button>
 
             <button

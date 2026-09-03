@@ -153,6 +153,16 @@ interface AppContextType {
   closeConfirmationModal: () => void;
   resetToDefaultData: () => void;
   clearAllData: () => void;
+  needsWorkspaceOnboarding: boolean;
+  setNeedsWorkspaceOnboarding: (needed: boolean) => void;
+  completeWorkspaceOnboarding: (data: {
+    businessName: string;
+    tagline?: string;
+    currency: CurrencyCode;
+    phone?: string;
+    ownerName?: string;
+  }) => Promise<void>;
+  openWorkspaceOnboarding: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -323,29 +333,150 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsSidebarCollapsed((prev) => !prev);
   };
 
+  // Workspace Onboarding State for new / Google sign-ins
+  const [needsWorkspaceOnboarding, setNeedsWorkspaceOnboarding] = useState<boolean>(false);
+
+  const openWorkspaceOnboarding = () => {
+    setNeedsWorkspaceOnboarding(true);
+  };
+
+  const completeWorkspaceOnboarding = async (data: {
+    businessName: string;
+    tagline?: string;
+    currency: CurrencyCode;
+    phone?: string;
+    ownerName?: string;
+  }) => {
+    const trimmedName = data.businessName.trim() || 'My Business Workspace';
+    const trimmedTagline = data.tagline?.trim() || '';
+    const trimmedPhone = data.phone?.trim() || '';
+    const resolvedCurrency = data.currency || 'NGN';
+    const resolvedOwner = data.ownerName || user?.displayName || 'Business Owner';
+
+    // 1. Update businessProfile in memory
+    const updatedProfile: BusinessProfile = {
+      ...businessProfile,
+      name: trimmedName,
+      tagline: trimmedTagline || businessProfile.tagline,
+      preferredCurrency: resolvedCurrency,
+      phone: trimmedPhone || businessProfile.phone,
+      email: user?.email || businessProfile.email,
+      accountName: trimmedName,
+    };
+    setBusinessProfile(updatedProfile);
+    setActiveCurrency(resolvedCurrency);
+
+    // 2. Update current account in accounts list
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id === activeAccountId || (user && acc.email === user.email)) {
+          return {
+            ...acc,
+            businessName: trimmedName,
+            ownerName: resolvedOwner,
+            currency: resolvedCurrency,
+            phone: trimmedPhone || acc.phone,
+            isDemo: false,
+          };
+        }
+        return acc;
+      })
+    );
+
+    // 3. Persist to Firestore if user is authenticated
+    if (user && !user.isGuest) {
+      try {
+        await setDoc(
+          doc(db, 'users', user.uid),
+          {
+            ...updatedProfile,
+            userId: user.uid,
+            ownerName: resolvedOwner,
+            workspaceSetupCompleted: true,
+            hasCustomBusinessName: true,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.warn('Failed to save onboarded business profile to Firestore:', err);
+      }
+    }
+
+    // 4. Mark setup as completed in localStorage
+    if (user) {
+      try {
+        localStorage.setItem(`billa_workspace_setup_${user.uid}`, 'true');
+      } catch {}
+    }
+
+    // 5. Dismiss onboarding view
+    setNeedsWorkspaceOnboarding(false);
+
+    // 6. Confetti & Celebration Toast
+    try {
+      confetti({
+        particleCount: 70,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
+    } catch {}
+
+    showToast(
+      'Workspace Configured!',
+      `Welcome to ${trimmedName}. Your invoicing and payment tracking suite is ready.`,
+      'success'
+    );
+  };
+
   // Real-time Cloud Synchronization with Firebase Firestore
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setNeedsWorkspaceOnboarding(false);
+      return;
+    }
+
+    if (user.isGuest) {
+      setNeedsWorkspaceOnboarding(false);
+      return;
+    }
+
+    // Check localStorage fast-path
+    const localSetupDone = localStorage.getItem(`billa_workspace_setup_${user.uid}`) === 'true';
 
     // 1. Sync Business Profile from Cloud
     const unsubProfile = onSnapshot(
       doc(db, 'users', user.uid),
       (docSnap) => {
         if (docSnap.exists()) {
-          const cloudData = docSnap.data() as Partial<BusinessProfile>;
+          const rawData = docSnap.data();
+          const cloudData = rawData as Partial<BusinessProfile> & {
+            workspaceSetupCompleted?: boolean;
+            hasCustomBusinessName?: boolean;
+          };
           setBusinessProfile((prev) => ({ ...prev, ...cloudData }));
+          if (cloudData.preferredCurrency) {
+            setActiveCurrency(cloudData.preferredCurrency);
+          }
+
+          // Determine if workspace onboarding is complete
+          const isDone =
+            rawData.workspaceSetupCompleted === true ||
+            (rawData.hasCustomBusinessName === true && !!rawData.name && rawData.name !== 'Apex Studios');
+
+          if (isDone) {
+            setNeedsWorkspaceOnboarding(false);
+            try {
+              localStorage.setItem(`billa_workspace_setup_${user.uid}`, 'true');
+            } catch {}
+          } else if (!localSetupDone) {
+            setNeedsWorkspaceOnboarding(true);
+          }
         } else {
-          // Upload initial profile to user's cloud document
-          setDoc(
-            doc(db, 'users', user.uid),
-            {
-              ...businessProfile,
-              userId: user.uid,
-              email: user.email || businessProfile.email,
-              updatedAt: new Date().toISOString(),
-            },
-            { merge: true }
-          ).catch((e) => console.warn('Cloud profile sync write notice:', e));
+          // Document does not exist in Firestore yet: definitely new user!
+          if (!localSetupDone) {
+            setNeedsWorkspaceOnboarding(true);
+          }
         }
       },
       (error) => {
@@ -1472,6 +1603,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         closeConfirmationModal,
         resetToDefaultData,
         clearAllData,
+        needsWorkspaceOnboarding,
+        setNeedsWorkspaceOnboarding,
+        completeWorkspaceOnboarding,
+        openWorkspaceOnboarding,
       }}
     >
       {children}

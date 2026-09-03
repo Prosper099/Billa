@@ -20,9 +20,10 @@ import { ReceiptScannerModal } from './components/ReceiptScannerModal';
 import { MobileSidebarDrawer } from './components/MobileSidebarDrawer';
 import { ConfirmationModal } from './components/ConfirmationModal';
 import { ToastContainer } from './components/Toast';
+import { WorkspaceOnboardingScreen } from './components/WorkspaceOnboardingScreen';
 
 const AppRoot: React.FC = () => {
-  const { isAuthenticated, isLoading } = useFirebaseAuth();
+  const { isAuthenticated, isLoading, user } = useFirebaseAuth();
   const {
     currentView,
     setCurrentView,
@@ -30,6 +31,7 @@ const AppRoot: React.FC = () => {
     selectedCustomer,
     setSelectedCustomer,
     businessProfile,
+    needsWorkspaceOnboarding,
   } = useApp();
 
   if (isLoading) {
@@ -45,6 +47,16 @@ const AppRoot: React.FC = () => {
     return (
       <>
         <HomePage />
+        <ToastContainer />
+      </>
+    );
+  }
+
+  // Intercept with Onboarding screen if user needs to set their business name before launching workspace
+  if (needsWorkspaceOnboarding && !user?.isGuest) {
+    return (
+      <>
+        <WorkspaceOnboardingScreen />
         <ToastContainer />
       </>
     );
