@@ -36,19 +36,41 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-// Resilient Gemini Generator with automatic model fallback for 503 / high demand spikes
+export interface GeminiExecutionResult {
+  text: string | null;
+  modelUsed?: string;
+  source: 'gemini' | 'gemini-vision' | 'fallback';
+  fallbackReason?: string;
+  durationMs: number;
+}
+
+// Resilient Gemini Generator with automatic model fallback and diagnostic logging
 async function generateContentSafe(params: {
   contents: string;
   responseMimeType?: string;
   responseSchema?: any;
-}): Promise<string | null> {
+}): Promise<GeminiExecutionResult> {
+  const overallStart = Date.now();
   const ai = getGeminiClient();
-  if (!ai) return null;
+  if (!ai) {
+    const reason = !process.env.GEMINI_API_KEY
+      ? 'GEMINI_API_KEY is not defined in server environment variables.'
+      : 'GoogleGenAI client failed to initialize.';
+    console.warn(`[AI Backend >> Warning] ${reason}`);
+    return {
+      text: null,
+      source: 'fallback',
+      fallbackReason: reason,
+      durationMs: Date.now() - overallStart,
+    };
+  }
 
-  // Candidates in priority order from gemini-api skill
-  const modelsToTry = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  // Active verified Gemini models with automatic fallback across healthy quotas
+  const modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
+  const errors: string[] = [];
 
   for (const model of modelsToTry) {
+    const attemptStart = Date.now();
     try {
       const config: any = {};
       if (params.responseMimeType) {
@@ -58,38 +80,73 @@ async function generateContentSafe(params: {
         config.responseSchema = params.responseSchema;
       }
 
+      console.log(`[AI Backend >> Gemini] Trying model: ${model} (payload size: ${params.contents.length} chars)...`);
       const response = await withTimeout(
         ai.models.generateContent({
           model,
           contents: params.contents,
           config: Object.keys(config).length > 0 ? config : undefined,
         }),
-        3800
+        18000
       );
 
+      const attemptDuration = Date.now() - attemptStart;
       if (response && response.text) {
-        return response.text;
+        console.log(`[AI Backend >> Gemini] Model ${model} SUCCEEDED in ${attemptDuration}ms (${response.text.length} chars returned)`);
+        return {
+          text: response.text,
+          modelUsed: model,
+          source: 'gemini',
+          durationMs: Date.now() - overallStart,
+        };
+      } else {
+        const err = `Model ${model} returned empty response in ${attemptDuration}ms`;
+        console.warn(`[AI Backend >> Gemini] ${err}`);
+        errors.push(err);
       }
     } catch (err: any) {
-      console.warn(`Gemini note for model '${model}':`, err?.status || err?.message || 'demand spike/timeout');
+      const attemptDuration = Date.now() - attemptStart;
+      const errMsg = `Model ${model} failed in ${attemptDuration}ms: ${err?.status || err?.message || 'timeout'}`;
+      console.warn(`[AI Backend >> Gemini Note] ${errMsg}`);
+      errors.push(errMsg);
     }
   }
 
-  return null;
+  return {
+    text: null,
+    source: 'fallback',
+    fallbackReason: `All models failed: ${errors.join('; ')}`,
+    durationMs: Date.now() - overallStart,
+  };
 }
 
-// Resilient Multimodal (Vision) Generator for Receipts / Invoices OCR
+// Resilient Multimodal (Vision) Generator for Receipts / Invoices OCR with diagnostic logging
 async function generateContentSafeWithImage(params: {
   parts: any[];
   responseMimeType?: string;
   responseSchema?: any;
-}): Promise<string | null> {
+}): Promise<GeminiExecutionResult> {
+  const overallStart = Date.now();
   const ai = getGeminiClient();
-  if (!ai) return null;
+  if (!ai) {
+    const reason = !process.env.GEMINI_API_KEY
+      ? 'GEMINI_API_KEY is not defined in server environment variables.'
+      : 'GoogleGenAI client failed to initialize.';
+    console.warn(`[AI Backend >> Warning] ${reason}`);
+    return {
+      text: null,
+      source: 'fallback',
+      fallbackReason: reason,
+      durationMs: Date.now() - overallStart,
+    };
+  }
 
-  const modelsToTry = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  // Active verified Gemini models with vision capabilities
+  const modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
+  const errors: string[] = [];
 
   for (const model of modelsToTry) {
+    const attemptStart = Date.now();
     try {
       const config: any = {};
       if (params.responseMimeType) {
@@ -99,29 +156,104 @@ async function generateContentSafeWithImage(params: {
         config.responseSchema = params.responseSchema;
       }
 
+      console.log(`[AI Backend >> Gemini Vision] Trying model: ${model} with image parts...`);
       const response = await withTimeout(
         ai.models.generateContent({
           model,
           contents: { parts: params.parts },
           config: Object.keys(config).length > 0 ? config : undefined,
         }),
-        5500
+        28000
       );
 
+      const attemptDuration = Date.now() - attemptStart;
       if (response && response.text) {
-        return response.text;
+        console.log(`[AI Backend >> Gemini Vision] Model ${model} SUCCEEDED in ${attemptDuration}ms (${response.text.length} chars returned)`);
+        return {
+          text: response.text,
+          modelUsed: model,
+          source: 'gemini-vision',
+          durationMs: Date.now() - overallStart,
+        };
+      } else {
+        const err = `Model ${model} returned empty vision response in ${attemptDuration}ms`;
+        console.warn(`[AI Backend >> Gemini Vision] ${err}`);
+        errors.push(err);
       }
     } catch (err: any) {
-      console.warn(`Gemini vision note for model '${model}':`, err?.status || err?.message || 'demand spike/timeout');
+      const attemptDuration = Date.now() - attemptStart;
+      const errMsg = `Model ${model} failed in ${attemptDuration}ms: ${err?.status || err?.message || 'timeout'}`;
+      console.warn(`[AI Backend >> Gemini Vision Note] ${errMsg}`);
+      errors.push(errMsg);
     }
   }
 
-  return null;
+  return {
+    text: null,
+    source: 'fallback',
+    fallbackReason: `All vision models failed: ${errors.join('; ')}`,
+    durationMs: Date.now() - overallStart,
+  };
 }
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'Billa API', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    service: 'Billa API',
+    timestamp: new Date().toISOString(),
+    geminiKeyConfigured: Boolean(process.env.GEMINI_API_KEY),
+  });
+});
+
+// Middleware: Deep Logging for all /api/ai/* Requests and Responses
+app.use('/api/ai', (req, res, next) => {
+  const startTime = Date.now();
+  const endpoint = req.originalUrl;
+  const method = req.method;
+  const clientLogId = req.headers['x-billa-client-log-id'] || 'no-client-id';
+
+  // Sanitize bulky fields (e.g. imageBase64) to keep terminal logs clean and readable
+  const sanitizedBody: Record<string, any> = {};
+  for (const [k, v] of Object.entries(req.body || {})) {
+    if (k === 'imageBase64' && typeof v === 'string') {
+      sanitizedBody[k] = `[Base64 Image: ${v.length} characters, startsWith: "${v.substring(0, 30)}..."]`;
+    } else {
+      sanitizedBody[k] = v;
+    }
+  }
+
+  console.log(`\n================== [AI API Inbound Request] ==================`);
+  console.log(`Time:        ${new Date().toISOString()}`);
+  console.log(`Route:       ${method} ${endpoint}`);
+  console.log(`Client ID:   ${clientLogId}`);
+  console.log(`API Key:     ${process.env.GEMINI_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED (Will use fallback engines)'}`);
+  console.log(`Payload:     ${JSON.stringify(sanitizedBody, null, 2)}`);
+  console.log(`==============================================================\n`);
+
+  // Intercept json response
+  const originalJson = res.json;
+  res.json = function (body: any) {
+    const durationMs = Date.now() - startTime;
+    const source = body?.source || 'unknown';
+    const isFallback = source !== 'gemini' && source !== 'gemini-vision';
+
+    console.log(`\n================== [AI API Outbound Response] ==================`);
+    console.log(`Time:        ${new Date().toISOString()}`);
+    console.log(`Route:       ${method} ${endpoint}`);
+    console.log(`Status:      ${res.statusCode}`);
+    console.log(`Duration:    ${durationMs}ms`);
+    console.log(`Source:      ${source}`);
+    if (isFallback) {
+      console.warn(`⚠️ FALLBACK ENGAGED! Reason: ${body?.fallbackReason || 'Non-Gemini engine or default invoked'}`);
+    }
+    console.log(`Response:    ${JSON.stringify(body, null, 2)}`);
+    console.log(`================================================================\n`);
+
+    return originalJson.call(this, body);
+  };
+
+  next();
 });
 
 // 1. AI Financial Narrative Endpoint (Fast & Human-Like)
@@ -149,6 +281,7 @@ app.post('/api/ai/narrative', async (req, res) => {
     `Pro Tip: Send a friendly WhatsApp reminder 48 hours before due date to boost on-time settlement by up to 80%.`,
   ];
 
+  let execResult: GeminiExecutionResult | null = null;
   try {
     const prompt = `You are Billa, an empathetic, sharp, and encouraging AI billing partner for small businesses.
 Analyze this live financial snapshot for "${businessName || 'Apex Studios'}":
@@ -169,7 +302,7 @@ Respond conversationally, like a supportive human financial copilot. Return JSON
   ]
 }`;
 
-    const text = await generateContentSafe({
+    execResult = await generateContentSafe({
       contents: prompt,
       responseMimeType: 'application/json',
       responseSchema: {
@@ -186,19 +319,24 @@ Respond conversationally, like a supportive human financial copilot. Return JSON
       },
     });
 
-    if (text) {
-      const parsed = JSON.parse(text);
-      return res.json({ ...parsed, source: 'gemini' });
+    if (execResult.text) {
+      const parsed = JSON.parse(execResult.text);
+      return res.json({
+        ...parsed,
+        source: 'gemini',
+        modelUsed: execResult.modelUsed,
+      });
     }
-  } catch (error) {
-    // Handled gracefully with fallback
+  } catch (error: any) {
+    console.warn('[AI Narrative Error]', error?.message || error);
   }
 
   return res.json({
     greeting: defaultGreeting,
     insight: defaultInsight,
     storyPoints: defaultStoryPoints,
-    source: 'fallback',
+    source: 'rule-based-narrative',
+    fallbackReason: execResult?.fallbackReason || 'Gemini model returned empty response',
   });
 });
 
@@ -240,6 +378,7 @@ app.post('/api/ai/follow-up', async (req, res) => {
       : `Dear ${customerName},\n\nHere is a reminder regarding Invoice ${invoiceNum} for ${amount}.\n\nPayment Details:\n${bankInfo}\n\nThank you for your partnership.\n\nBest regards,\n${businessName}`;
   }
 
+  let execResult: GeminiExecutionResult | null = null;
   try {
     const prompt = `You are Billa, crafting a warm, human, high-conversion billing follow-up for a client.
 Customer: ${customerName}
@@ -257,7 +396,7 @@ Rules:
 - If Email, write a clean subject line and body paragraphs.
 - Return JSON with "subject" and "message".`;
 
-    const text = await generateContentSafe({
+    execResult = await generateContentSafe({
       contents: prompt,
       responseMimeType: 'application/json',
       responseSchema: {
@@ -270,12 +409,18 @@ Rules:
       },
     });
 
-    if (text) {
-      const parsed = JSON.parse(text);
-      return res.json({ ...parsed, tone, channel, source: 'gemini' });
+    if (execResult.text) {
+      const parsed = JSON.parse(execResult.text);
+      return res.json({
+        ...parsed,
+        tone,
+        channel,
+        source: 'gemini',
+        modelUsed: execResult.modelUsed,
+      });
     }
-  } catch (error) {
-    // Graceful fallback
+  } catch (error: any) {
+    console.warn('[AI Follow-Up Error]', error?.message || error);
   }
 
   return res.json({
@@ -283,7 +428,8 @@ Rules:
     message: fallbackMessage,
     tone,
     channel,
-    source: 'fallback',
+    source: 'template-engine',
+    fallbackReason: execResult?.fallbackReason || 'Gemini model returned empty response',
   });
 });
 
@@ -320,9 +466,9 @@ app.post('/api/ai/customer-insight', async (req, res) => {
     strategicRecommendation: 'Send a gentle WhatsApp courtesy nudge 2 days before the due date to ensure timely transfer.',
     suggestedPaymentTerms: 'Net 14 Days',
     lastAnalyzedAt: new Date().toISOString(),
-    source: 'fallback',
   };
 
+  let execResult: GeminiExecutionResult | null = null;
   try {
     const prompt = `You are Billa's AI Credit & Customer Insight Analyst.
 Analyze this customer's profile and payment history:
@@ -345,7 +491,7 @@ Provide a human-readable, practical risk assessment in JSON with:
 - strategicRecommendation (practical billing advice for business owner)
 - suggestedPaymentTerms (e.g. "Net 14 Days", "50% Upfront Deposit")`;
 
-    const text = await generateContentSafe({
+    execResult = await generateContentSafe({
       contents: prompt,
       responseMimeType: 'application/json',
       responseSchema: {
@@ -379,20 +525,25 @@ Provide a human-readable, practical risk assessment in JSON with:
       },
     });
 
-    if (text) {
-      const parsed = JSON.parse(text);
+    if (execResult.text) {
+      const parsed = JSON.parse(execResult.text);
       return res.json({
         customerId: customer?.id,
         ...parsed,
         lastAnalyzedAt: new Date().toISOString(),
         source: 'gemini',
+        modelUsed: execResult.modelUsed,
       });
     }
-  } catch (error) {
-    // Graceful fallback
+  } catch (error: any) {
+    console.warn('[AI Customer Insight Error]', error?.message || error);
   }
 
-  return res.json(fallbackAssessment);
+  return res.json({
+    ...fallbackAssessment,
+    source: 'rule-based-insights',
+    fallbackReason: execResult?.fallbackReason || 'Gemini model returned empty response',
+  });
 });
 
 // 4. AI Batch Overdue Reminders Generator
@@ -404,7 +555,7 @@ app.post('/api/ai/batch-reminders', async (req, res) => {
     : 'GTBank, Acct: 0239481920 (Apex Creative Media Ltd)';
 
   if (!overdueInvoices || overdueInvoices.length === 0) {
-    return res.json({ reminders: [] });
+    return res.json({ reminders: [], count: 0, source: 'template-engine' });
   }
 
   const generatedReminders = overdueInvoices.map((inv: any) => {
@@ -434,7 +585,11 @@ app.post('/api/ai/batch-reminders', async (req, res) => {
     };
   });
 
-  return res.json({ reminders: generatedReminders, count: generatedReminders.length });
+  return res.json({
+    reminders: generatedReminders,
+    count: generatedReminders.length,
+    source: 'template-engine',
+  });
 });
 
 // 5. AI Smart Invoice Creator (Prompt to Invoice)
@@ -448,6 +603,7 @@ app.post('/api/ai/smart-extract', async (req, res) => {
   // Always compute an accurate deterministic fallback based on the actual prompt
   const fallbackInvoice = extractInvoiceFromPrompt(promptText, defaultCurrency);
 
+  let execResult: GeminiExecutionResult | null = null;
   try {
     const prompt = `You are Billa's smart invoice builder. Extract structured invoice data from this user text:
 "${promptText}"
@@ -462,7 +618,7 @@ Extract:
 - dueDate (YYYY-MM-DD format if mentioned or relative days)
 - notes (string)`;
 
-    const text = await generateContentSafe({
+    execResult = await generateContentSafe({
       contents: prompt,
       responseMimeType: 'application/json',
       responseSchema: {
@@ -493,25 +649,31 @@ Extract:
       },
     });
 
-    if (text) {
-      const parsed = JSON.parse(text);
+    if (execResult.text) {
+      const parsed = JSON.parse(execResult.text);
       if (parsed && parsed.customerName && parsed.items && parsed.items.length > 0) {
-        return res.json({ invoice: parsed, source: 'gemini' });
+        return res.json({
+          invoice: parsed,
+          source: 'gemini',
+          modelUsed: execResult.modelUsed,
+        });
       }
     }
-  } catch (error) {
-    console.warn('Smart extract Gemini note: Falling back to resilient prompt parser', error);
+  } catch (error: any) {
+    console.warn('Smart extract Gemini note: Falling back to resilient prompt parser', error?.message || error);
   }
 
   return res.json({
     invoice: fallbackInvoice,
     source: 'nlp-parser',
+    fallbackReason: execResult?.fallbackReason || 'Gemini model did not return structured invoice data',
   });
 });
 
 // 6. AI Advisor & Cashflow Diagnostic Endpoint (Conversational, Human-like, with Proactive Tips)
 app.post('/api/ai/advisor', async (req, res) => {
   const { question, context } = req.body;
+  const userQuery = (question || '').trim();
 
   const practicalTips = [
     '💡 **Tip: Send WhatsApp Reminders**: Invoices sent or followed up on WhatsApp have a 3x higher open and payment rate than email alone.',
@@ -520,51 +682,77 @@ app.post('/api/ai/advisor', async (req, res) => {
     '💡 **Tip: Clear Bank Details**: Ensure your account number, bank name, and account holder name are prominently stated at the top of every reminder.',
   ];
 
+  let execResult: GeminiExecutionResult | null = null;
   try {
+    const isGreeting = /^(hi|hello|hey|good\s*(morning|afternoon|evening)|howdy|sup|yo)\b/i.test(userQuery);
+
     const prompt = `You are Billa, an empathetic, encouraging, and razor-sharp AI financial advisor and billing copilot for small businesses.
-The business owner asks: "${question || 'How can I improve my payment collections?'}"
+The business owner asks: "${userQuery || 'How can I improve my payment collections?'}"
 
 Business Context:
 ${JSON.stringify(context || {})}
 
 Guidelines for your response:
 1. Speak warmly, conversationally, and authentically like a knowledgeable human friend and business copilot (not like a robotic corporate algorithm).
-2. Give direct, actionable advice tailored to African & international small business dynamics (e.g. WhatsApp follow-ups, bank transfers, deposits).
-3. Include 2-3 specific practical action steps.
-4. End with one punchy, memorable "💡 Billa Pro Tip".`;
+${
+  isGreeting
+    ? `2. The user greeted you ("${userQuery}"). Greet them warmly in return, mention that you're ready to help their business (${context?.businessName || 'your business'}), and suggest 2 or 3 quick things you can do together right now (e.g. review overdue invoices, draft a friendly WhatsApp follow-up, optimize invoice payment terms, or analyze cashflow).`
+    : `2. Provide direct, highly practical advice tailored to African & international small business dynamics (e.g. WhatsApp follow-ups, direct bank transfers, deposit policies, milestone invoicing).
+3. Include 2-3 specific, actionable steps the business owner can take immediately.
+4. End with one punchy, memorable "💡 Billa Pro Tip".`
+}`;
 
-    const text = await generateContentSafe({
+    execResult = await generateContentSafe({
       contents: prompt,
     });
 
-    if (text) {
+    if (execResult.text) {
       return res.json({
-        answer: text,
+        answer: execResult.text,
         tips: practicalTips,
         source: 'gemini',
+        modelUsed: execResult.modelUsed,
       });
     }
-  } catch (error) {
-    // Graceful fallback
+  } catch (error: any) {
+    console.warn('AI Advisor Gemini note: using dynamic contextual fallback', error?.message || error);
+  }
+
+  // Dynamic contextual fallback
+  const isGreeting = /^(hi|hello|hey|good\s*(morning|afternoon|evening)|howdy)\b/i.test(userQuery);
+  let fallbackAnswer = '';
+  if (isGreeting) {
+    fallbackAnswer = `Hello! 👋 Great to connect with you. I'm Billa, your financial copilot for ${context?.businessName || 'your business'}.\n\nHow can I help you today? Here are a few things we can do right now:\n• **Draft polite WhatsApp payment reminders** for any open invoices\n• **Review your cash flow** and collection rate\n• **Generate a new invoice** with automated terms\n• **Optimize your billing policy** (like a 50% upfront deposit)\n\nWhat would you like to tackle?`;
+  } else if (/risk|cashflow|score|health/i.test(userQuery)) {
+    fallbackAnswer = `Here is a quick look at your current cashflow health:\n\n• **Collected**: ${context?.collected ? '₦' + Number(context.collected).toLocaleString() : '₦0'}\n• **Outstanding**: ${context?.outstanding ? '₦' + Number(context.outstanding).toLocaleString() : '₦0'}\n\n**Key Recommendation:** Keep client communication active on WhatsApp 48 hours before due dates to ensure zero payment friction!\n\n${practicalTips[0]}`;
+  } else {
+    fallbackAnswer = `Here are 3 practical recommendations to optimize your receivables:\n\n1. **Send a friendly WhatsApp check-in**: Reaching out casually 2 days before the due date gives clients ample time to process bank transfers.\n2. **Include instant payment details**: Always paste your account details directly in the message.\n3. **Establish a 50% upfront standard**: For upcoming creative or service orders, ask for 50% upfront.\n\n${practicalTips[Math.floor(Math.random() * practicalTips.length)]}`;
   }
 
   return res.json({
-    answer: `Hey there! Here is a breakdown for your current finances:\n\nYou currently have active billing awaiting payment. To keep your cashflow running smoothly, here are 3 practical moves you can make today:\n\n1. **Send a friendly WhatsApp check-in**: Reaching out casually 2 days before the due date gives clients ample time to process bank transfers.\n2. **Include instant payment details**: Always paste your account details directly in the chat so the client doesn't need to hunt for bank info.\n3. **Set clear milestone expectations**: For upcoming projects, establish a 50% upfront deposit standard.\n\n${practicalTips[0]}`,
+    answer: fallbackAnswer,
     tips: practicalTips,
-    source: 'fallback',
+    source: 'knowledge-base',
+    fallbackReason: execResult?.fallbackReason || 'Gemini model did not respond',
   });
 });
 
 // 7. AI Receipt / Camera Capture Parser (Multimodal Vision OCR to Invoice)
 app.post('/api/ai/parse-receipt', async (req, res) => {
-  const { imageBase64, mimeType = 'image/jpeg', defaultCurrency = 'NGN' } = req.body;
+  const { imageBase64, mimeType, defaultCurrency = 'NGN' } = req.body;
 
   if (!imageBase64) {
     return res.status(400).json({ error: 'Receipt image data is required.' });
   }
 
+  // Auto-detect exact mimeType from Data URL prefix if present
+  const mimeMatch = typeof imageBase64 === 'string' ? imageBase64.match(/^data:([^;]+);base64,/) : null;
+  const effectiveMime = mimeMatch ? mimeMatch[1] : (mimeType || 'image/jpeg');
+
   // Strip potential data URL prefix
-  const cleanBase64 = imageBase64.replace(/^data:image\/[a-z0-9-+.]+;base64,/, '');
+  const cleanBase64 = typeof imageBase64 === 'string'
+    ? imageBase64.replace(/^data:[^;]+;base64,/, '').trim()
+    : imageBase64;
 
   const todayStr = new Date().toISOString().split('T')[0];
   const dueStr = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
@@ -579,21 +767,22 @@ app.post('/api/ai/parse-receipt', async (req, res) => {
       {
         description: 'Goods / Services rendered (from Receipt)',
         quantity: 1,
-        unitPrice: 25000,
-        total: 25000,
+        unitPrice: 0,
+        total: 0,
       },
     ],
-    subtotal: 25000,
+    subtotal: 0,
     taxRate: 0,
     taxAmount: 0,
     discountPercentage: 0,
     discountAmount: 0,
-    total: 25000,
+    total: 0,
     currency: defaultCurrency,
-    notes: 'Scanned from camera photo.',
-    confidence: 85,
+    notes: 'Scanned from camera photo. Please verify line items.',
+    confidence: 60,
   };
 
+  let execResult: GeminiExecutionResult | null = null;
   try {
     const prompt = `You are Billa's high-precision receipt and invoice OCR assistant.
 Analyze this photo of a receipt, bill, or invoice carefully.
@@ -626,11 +815,11 @@ Return valid JSON with these fields:
 - notes: string
 - confidence: number (1-100)`;
 
-    const text = await generateContentSafeWithImage({
+    execResult = await generateContentSafeWithImage({
       parts: [
         {
           inlineData: {
-            mimeType: mimeType || 'image/jpeg',
+            mimeType: effectiveMime,
             data: cleanBase64,
           },
         },
@@ -674,8 +863,8 @@ Return valid JSON with these fields:
       },
     });
 
-    if (text) {
-      const parsed = JSON.parse(text);
+    if (execResult.text) {
+      const parsed = JSON.parse(execResult.text);
       // Ensure numerical consistency
       const items = (parsed.items || []).map((it: any) => ({
         description: it.description || 'Item',
@@ -699,26 +888,28 @@ Return valid JSON with these fields:
           date: parsed.date || todayStr,
           dueDate: parsed.dueDate || dueStr,
           items: items.length > 0 ? items : fallbackReceipt.items,
-          subtotal: subtotal || fallbackReceipt.subtotal,
+          subtotal: items.length > 0 ? subtotal : 0,
           taxRate,
           taxAmount,
           discountPercentage,
           discountAmount,
-          total: calculatedTotal || fallbackReceipt.total,
+          total: items.length > 0 ? calculatedTotal : 0,
           currency: parsed.currency || defaultCurrency,
           notes: parsed.notes || 'Extracted from camera photo with Billa Vision OCR.',
           confidence: parsed.confidence || 95,
         },
         source: 'gemini-vision',
+        modelUsed: execResult.modelUsed,
       });
     }
-  } catch (error) {
-    console.error('Error parsing receipt image:', error);
+  } catch (error: any) {
+    console.error('Error parsing receipt image:', error?.message || error);
   }
 
   return res.json({
     receipt: fallbackReceipt,
-    source: 'fallback',
+    source: 'ocr-fallback',
+    fallbackReason: execResult?.fallbackReason || 'Vision model returned no data',
   });
 });
 

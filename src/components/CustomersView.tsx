@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Users,
   Search,
@@ -24,6 +24,7 @@ import { useApp } from '../context/AppContext';
 import { formatCurrency } from '../utils/formatters';
 import { Customer } from '../types';
 import { CustomerProfileView } from './CustomerProfileView';
+import { calculateCustomerCreditMetrics, calculatePortfolioCreditReliability } from '../utils/creditScoring';
 
 export const CustomersView: React.FC = () => {
   const {
@@ -86,13 +87,12 @@ export const CustomersView: React.FC = () => {
 
   const totalCRMInvoiced = customers.reduce((sum, c) => sum + c.totalBilled, 0);
   const totalCRMBalance = customers.reduce((sum, c) => sum + c.outstandingBalance, 0);
-  const avgRiskScore =
-    customers.length > 0
-      ? Math.round(
-          customers.reduce((sum, c) => sum + (c.riskAssessment?.riskScore || 80), 0) /
-            customers.length
-        )
-      : 85;
+
+  const portfolioReliability = useMemo(() => {
+    return calculatePortfolioCreditReliability(customers, invoices);
+  }, [customers, invoices]);
+
+  const avgRiskScore = portfolioReliability.averageScore;
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,54 +126,37 @@ export const CustomersView: React.FC = () => {
   };
 
   const getReliabilityBadge = (customer: Customer) => {
-    const assessment = customer.riskAssessment;
-    const reliability = customer.paymentReliability;
+    const metrics = calculateCustomerCreditMetrics(customer, invoices);
 
-    if (assessment) {
-      if (assessment.riskLevel === 'low') {
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <ShieldCheck className="w-3 h-3 text-emerald-600" />
-            <span>{assessment.riskScore}/100 • {assessment.reliabilityRating}</span>
-          </span>
-        );
-      }
-      if (assessment.riskLevel === 'high') {
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-            <ShieldAlert className="w-3 h-3 text-rose-600" />
-            <span>{assessment.riskScore}/100 • {assessment.reliabilityRating}</span>
-          </span>
-        );
-      }
+    if (metrics.isNewClient) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-          <Clock className="w-3 h-3 text-amber-600" />
-          <span>{assessment.riskScore}/100 • {assessment.reliabilityRating}</span>
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+          <ShieldCheck className="w-3 h-3 text-slate-500" />
+          <span>{metrics.score}/100 • New Client</span>
         </span>
       );
     }
 
-    if (reliability === 'high') {
+    if (metrics.riskLevel === 'low') {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-          <CheckCircle2 className="w-2.5 h-2.5" />
-          <span>Prompt Payer</span>
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <ShieldCheck className="w-3 h-3 text-emerald-600" />
+          <span>{metrics.score}/100 • {metrics.rating}</span>
         </span>
       );
     }
-    if (reliability === 'slow') {
+    if (metrics.riskLevel === 'high') {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-          <AlertCircle className="w-2.5 h-2.5" />
-          <span>Follow-up Needed</span>
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+          <ShieldAlert className="w-3 h-3 text-rose-600" />
+          <span>{metrics.score}/100 • {metrics.rating}</span>
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-        <Clock className="w-2.5 h-2.5" />
-        <span>Standard Terms</span>
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+        <Clock className="w-3 h-3 text-amber-600" />
+        <span>{metrics.score}/100 • {metrics.rating}</span>
       </span>
     );
   };
@@ -225,8 +208,22 @@ export const CustomersView: React.FC = () => {
 
         <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-1">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Avg Credit Reliability</span>
-          <div className="text-2xl font-black font-mono text-indigo-700">{avgRiskScore} / 100</div>
-          <span className="text-xs text-indigo-600 font-medium">AI behavioral average</span>
+          <div
+            className={`text-2xl font-black font-mono ${
+              portfolioReliability.totalEvaluated === 0
+                ? 'text-slate-400'
+                : portfolioReliability.averageScore >= 80
+                ? 'text-indigo-700'
+                : portfolioReliability.averageScore >= 60
+                ? 'text-amber-600'
+                : 'text-rose-600'
+            }`}
+          >
+            {portfolioReliability.displayScore}
+          </div>
+          <span className="text-xs text-indigo-600 font-medium truncate block">
+            {portfolioReliability.statusLabel}
+          </span>
         </div>
       </div>
 

@@ -11,6 +11,7 @@ import { BillaAIIcon } from './BrandLogo';
 import { useApp } from '../context/AppContext';
 import { generateInvoiceNumber } from '../utils/formatters';
 import { extractInvoiceFromPrompt } from '../utils/promptExtractor';
+import { callAiEndpoint } from '../services/aiClient';
 
 export const QuickPromptModal: React.FC = () => {
   const {
@@ -22,6 +23,7 @@ export const QuickPromptModal: React.FC = () => {
     setSelectedInvoice,
     setCurrentView,
     showToast,
+    setReceiptDraftData,
   } = useApp();
 
   const [promptText, setPromptText] = useState('');
@@ -44,16 +46,15 @@ export const QuickPromptModal: React.FC = () => {
     let extracted: any = null;
 
     try {
-      const res = await fetch('/api/ai/smart-extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: text, defaultCurrency: activeCurrency }),
-      });
+      const { data, isFallback, fallbackReason } = await callAiEndpoint('/api/ai/smart-extract', {
+        prompt: text,
+        defaultCurrency: activeCurrency,
+      }, { timeoutMs: 14000 });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.invoice && data.invoice.customerName) {
-          extracted = data.invoice;
+      if (data?.invoice?.customerName) {
+        extracted = data.invoice;
+        if (isFallback) {
+          console.info(`[QuickPromptModal] Extracted using fallback parser: ${fallbackReason}`);
         }
       }
     } catch {
@@ -65,19 +66,53 @@ export const QuickPromptModal: React.FC = () => {
       extracted = extractInvoiceFromPrompt(text, activeCurrency);
     }
 
-    // Calculate totals & items
+    // Calculate totals & items using REAL extracted amounts
     const items =
       extracted.items && extracted.items.length > 0
-        ? extracted.items
-        : [{ description: 'Professional Services', quantity: 1, unitPrice: 50000, total: 50000 }];
+        ? extracted.items.map((it: any, idx: number) => ({
+            id: `item-${Date.now()}-${idx + 1}`,
+            description: it.description || 'Professional Services',
+            quantity: Number(it.quantity) || 1,
+            unitPrice: Number(it.unitPrice) || 0,
+            total: (Number(it.quantity) || 1) * (Number(it.unitPrice) || 0),
+          }))
+        : [
+            {
+              id: `item-${Date.now()}-1`,
+              description: 'Professional Services',
+              quantity: 1,
+              unitPrice: 0,
+              total: 0,
+            },
+          ];
 
     const subtotal = items.reduce(
       (sum: number, it: any) => sum + (it.total || it.quantity * it.unitPrice || 0),
       0
     );
-    const discountPercentage = extracted.discountPercentage || 0;
+    const discountPercentage = Number(extracted.discountPercentage) || 0;
     const discountAmount = (subtotal * discountPercentage) / 100;
     const total = Math.max(0, subtotal - discountAmount);
+
+    // If no valid price was found in the prompt, pass details directly to Invoice Studio so user can input real numbers
+    if (total <= 0 || items.some((it: any) => it.unitPrice <= 0)) {
+      setReceiptDraftData({
+        customerName: extracted.customerName && extracted.customerName !== 'Valued Client' ? extracted.customerName : '',
+        customerEmail: extracted.customerEmail,
+        customerPhone: extracted.customerPhone,
+        customerAddress: extracted.customerAddress,
+        items,
+        notes: extracted.notes || `Prompt: "${text}"`,
+        dueDate: extracted.dueDate,
+        discountPercentage,
+      });
+      setIsQuickPromptOpen(false);
+      setPromptText('');
+      setCurrentView('invoice-create');
+      showToast('Opening Invoice Editor', 'Details extracted. Enter your exact prices and save.', 'info');
+      setIsProcessing(false);
+      return;
+    }
 
     const newInv = createInvoice({
       invoiceNumber: generateInvoiceNumber(invoices.length),
@@ -106,7 +141,7 @@ export const QuickPromptModal: React.FC = () => {
     setPromptText('');
     setSelectedInvoice(newInv);
     setCurrentView('invoice-view');
-    showToast('Invoice Created by AI', `Extracted invoice for ${extracted.customerName || 'Client'}.`, 'success');
+    showToast('Invoice Created by AI', `Created invoice for ${extracted.customerName || 'Client'} with exact figures.`, 'success');
     setIsProcessing(false);
   };
 

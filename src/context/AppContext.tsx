@@ -36,6 +36,7 @@ import {
   INITIAL_REMINDER_CONFIG,
   INITIAL_TREND_DATA,
 } from '../data/mockData';
+import { callAiEndpoint } from '../services/aiClient';
 
 export type ActiveView =
   | 'dashboard'
@@ -1097,18 +1098,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setIsAnalyzingCustomerRisk(true);
     try {
-      const response = await fetch('/api/ai/customer-insight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customer,
-          invoices,
-          businessProfile,
-        }),
-      });
+      const { data } = await callAiEndpoint<CustomerRiskAssessment>('/api/ai/customer-insight', {
+        customer,
+        invoices,
+        businessProfile,
+      }, { timeoutMs: 15000 });
 
-      if (!response.ok) throw new Error('AI analysis service error');
-      const assessment: CustomerRiskAssessment = await response.json();
+      if (!data) throw new Error('AI analysis service returned no assessment');
+      const assessment: CustomerRiskAssessment = data;
 
       // Update customer in state
       setCustomers((prev) =>
@@ -1296,23 +1293,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     try {
-      const response = await fetch('/api/ai/batch-reminders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          overdueInvoices,
-          businessProfile,
-          tone: reminderConfig.defaultTone,
-        }),
-      });
+      const { data } = await callAiEndpoint<{ reminders: any[] }>('/api/ai/batch-reminders', {
+        overdueInvoices,
+        businessProfile,
+        tone: reminderConfig.defaultTone,
+      }, { timeoutMs: 15000 });
 
-      const data = await response.json();
+      const reminders = data?.reminders || [];
       showToast(
         'Overdue Invoices Scanned',
-        `Generated ${data.reminders?.length || 0} customized follow-up reminders.`,
+        `Generated ${reminders.length} customized follow-up reminders.`,
         'success'
       );
-      return data.reminders || [];
+      return reminders;
     } catch (e) {
       console.error('Batch scan error:', e);
       showToast('Scan Note', 'Detected overdue invoices for review.', 'info');

@@ -174,13 +174,7 @@ export const RemindersHubView: React.FC = () => {
       {/* Header & Quick Action Buttons */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl sm:text-2xl font-extrabold text-[#1A1C1E] tracking-tight">AI Follow-Up Reminders</h1>
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-              <Sparkles className="w-3 h-3 text-indigo-600" />
-              <span>Gemini Automated</span>
-            </span>
-          </div>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#1A1C1E] tracking-tight">AI Follow-Up Reminders</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             Detect overdue invoices, customize tone schedules, and send automated settlement reminders via Email & WhatsApp
           </p>

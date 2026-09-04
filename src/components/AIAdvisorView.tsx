@@ -18,6 +18,7 @@ import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { BillaAIIcon } from './BrandLogo';
 import { Invoice } from '../types';
+import { callAiEndpoint } from '../services/aiClient';
 
 export const AIAdvisorView: React.FC = () => {
   const {
@@ -59,35 +60,66 @@ export const AIAdvisorView: React.FC = () => {
     '📱 What is the best WhatsApp reminder script?',
   ];
 
-  const currentSelectedInvoice = invoices.find((i) => i.id === selectedInvoiceId) || invoices[0];
+  const sampleInvoiceFallback = {
+    id: 'sample-inv-01',
+    invoiceNumber: 'BIL-2026-001',
+    customerId: 'cust-demo',
+    customerName: 'Fatima Aliyu',
+    customerEmail: 'fatima@apexcreatives.com',
+    customerPhone: '+234 803 123 4567',
+    customerAddress: 'Victoria Island, Lagos',
+    issueDate: new Date().toISOString().split('T')[0],
+    dueDate: new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
+    items: [
+      { id: 'it-1', description: 'Brand Identity & Design System', quantity: 1, unitPrice: 120000, total: 120000 },
+      { id: 'it-2', description: 'Mobile UI Prototype & Assets', quantity: 1, unitPrice: 85000, total: 85000 },
+    ],
+    subtotal: 205000,
+    discountPercentage: 0,
+    discountAmount: 0,
+    taxRate: 0,
+    taxAmount: 0,
+    deliveryFee: 0,
+    total: 205000,
+    status: 'pending' as const,
+    notes: 'Standard payment terms.',
+    paymentTerms: 'Due in 3 days',
+    currency: activeCurrency,
+  };
+
+  const currentSelectedInvoice =
+    (selectedInvoiceId ? invoices.find((i) => i.id === selectedInvoiceId) : invoices[0]) ||
+    sampleInvoiceFallback;
 
   // Generate Follow-up with AI
   const handleGenerateFollowUp = async () => {
-    if (!currentSelectedInvoice) return;
+    const targetInvoice = currentSelectedInvoice || sampleInvoiceFallback;
     setIsGeneratingMessage(true);
 
     try {
-      const res = await fetch('/api/ai/follow-up', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          invoice: currentSelectedInvoice,
-          business: businessProfile,
-          tone,
-          channel,
-        }),
-      });
+      const { data, isFallback } = await callAiEndpoint('/api/ai/follow-up', {
+        invoice: targetInvoice,
+        business: businessProfile,
+        tone,
+        channel,
+      }, { timeoutMs: 12000 });
 
-      if (res.ok) {
-        const data = await res.json();
-        setGeneratedMessage(data.message || '');
-        setGeneratedSubject(data.subject || '');
-        showToast('Billa AI Follow-up Generated', 'Message tailored to your chosen tone and channel.');
+      if (data?.message) {
+        setGeneratedMessage(data.message);
+        setGeneratedSubject(data.subject || `Payment Reminder: Invoice ${targetInvoice.invoiceNumber}`);
+        showToast('Billa AI Follow-up Generated', isFallback ? 'Generated with offline template engine.' : 'Tailored message crafted by Gemini.');
       } else {
-        showToast('Generation Failed', 'Could not generate message.', 'error');
+        const fallbackMsg = channel === 'whatsapp'
+          ? `Hi ${targetInvoice.customerName}! 👋 Hope you are having a wonderful week.\n\nJust following up on invoice *${targetInvoice.invoiceNumber}* for *${formatCurrency(targetInvoice.total, activeCurrency)}*.\n\nBank: ${businessProfile.bankName || 'GTBank'} (${businessProfile.accountNumber || '0239481920'})\n\nThank you so much!\n— ${businessProfile.name || 'Apex Studios'}`
+          : `Dear ${targetInvoice.customerName},\n\nI hope this message finds you well.\n\nThis is a polite reminder regarding Invoice ${targetInvoice.invoiceNumber} for ${formatCurrency(targetInvoice.total, activeCurrency)}.\n\nPayment Details:\nBank: ${businessProfile.bankName || 'GTBank'}\nAccount Number: ${businessProfile.accountNumber || '0239481920'}\n\nWarm regards,\n${businessProfile.name || 'Apex Studios'}`;
+        setGeneratedMessage(fallbackMsg);
+        setGeneratedSubject(`Payment Reminder: Invoice ${targetInvoice.invoiceNumber}`);
+        showToast('Draft Ready', 'Template generated successfully.');
       }
     } catch {
-      showToast('Network error', 'Fallback draft ready.', 'info');
+      const fallbackMsg = `Hi ${targetInvoice.customerName}! Friendly reminder regarding Invoice ${targetInvoice.invoiceNumber} for ${formatCurrency(targetInvoice.total, activeCurrency)}. Please confirm once transferred. Thank you! — ${businessProfile.name || 'Billa'}`;
+      setGeneratedMessage(fallbackMsg);
+      showToast('Offline Draft Generated', 'Ready to copy and share.');
     } finally {
       setIsGeneratingMessage(false);
     }
@@ -108,38 +140,37 @@ export const AIAdvisorView: React.FC = () => {
     setIsChatLoading(true);
 
     try {
-      const res = await fetch('/api/ai/advisor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question: userText,
-          context: {
-            businessName: businessProfile.name,
-            totalInvoiced: metrics.totalInvoiced,
-            collected: metrics.collected,
-            outstanding: metrics.outstanding,
-            overdueCount: metrics.overdueInvoicesCount,
-            collectionRate: metrics.collectionRate,
-          },
-        }),
-      });
+      const { data } = await callAiEndpoint('/api/ai/advisor', {
+        question: userText,
+        context: {
+          businessName: businessProfile.name,
+          totalInvoiced: metrics.totalInvoiced,
+          collected: metrics.collected,
+          outstanding: metrics.outstanding,
+          overdueCount: metrics.overdueInvoicesCount,
+          collectionRate: metrics.collectionRate,
+        },
+      }, { timeoutMs: 14000 });
 
-      if (res.ok) {
-        const data = await res.json();
+      if (data?.answer) {
         setChatHistory((prev) => [
           ...prev,
           {
             role: 'assistant',
-            text: data.answer || 'Here are my recommendations based on your current metrics...',
+            text: data.answer,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           },
         ]);
       } else {
+        const isGreeting = /^(hi|hello|hey|good\s*(morning|afternoon|evening))/i.test(userText);
+        const dynamicFallback = isGreeting
+          ? `Hello! 👋 How can I help you today? I can help you draft a high-converting WhatsApp reminder, analyze your open receivables, or configure optimal milestone deposit rules for your clients.`
+          : `Based on your question regarding "${userText}": I recommend reviewing your active invoices, keeping clear payment bank details directly in all chat communications, and considering a 50% upfront deposit standard on future orders to eliminate collection delays.`;
         setChatHistory((prev) => [
           ...prev,
           {
             role: 'assistant',
-            text: "Here's a quick proven tip: Sending a friendly WhatsApp reminder 48 hours before an invoice is due improves on-time settlement by over 40%. Would you like me to draft one for your open invoice?",
+            text: dynamicFallback,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           },
         ]);
@@ -149,7 +180,7 @@ export const AIAdvisorView: React.FC = () => {
         ...prev,
         {
           role: 'assistant',
-          text: "To protect your business cashflow, always ask for a 50% commitment deposit before kicking off design or service projects. It filters high-intent clients and covers immediate operational costs.",
+          text: `Regarding "${userText}": To protect your business cashflow, always ask for a 50% commitment deposit before starting projects. It filters high-intent clients and covers initial expenses immediately.`,
           timestamp: 'Just now',
         },
       ]);
@@ -202,15 +233,21 @@ export const AIAdvisorView: React.FC = () => {
             <div className="space-y-1.5">
               <label className="text-slate-700 font-semibold">Select Target Invoice</label>
               <select
-                value={selectedInvoiceId}
+                value={selectedInvoiceId || (invoices.length === 0 ? 'sample-inv-01' : '')}
                 onChange={(e) => setSelectedInvoiceId(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-500 cursor-pointer"
               >
-                {invoices.map((inv) => (
-                  <option key={inv.id} value={inv.id}>
-                    {inv.invoiceNumber} — {inv.customerName} ({formatCurrency(inv.total, activeCurrency)} • {inv.status.toUpperCase()})
+                {invoices.length === 0 ? (
+                  <option value="sample-inv-01">
+                    ⚡ Demo Invoice: BIL-2026-001 — Fatima Aliyu (₦205,000 • PENDING)
                   </option>
-                ))}
+                ) : (
+                  invoices.map((inv) => (
+                    <option key={inv.id} value={inv.id}>
+                      {inv.invoiceNumber} — {inv.customerName} ({formatCurrency(inv.total, activeCurrency)} • {inv.status.toUpperCase()})
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 

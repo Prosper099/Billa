@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ArrowLeft,
   Building2,
@@ -29,6 +29,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { Customer, CustomerNote } from '../types';
+import { calculateCustomerCreditMetrics } from '../utils/creditScoring';
 
 interface CustomerProfileViewProps {
   customer: Customer;
@@ -89,6 +90,10 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({ custom
 
   const assessment = customer.riskAssessment;
 
+  const creditMetrics = useMemo(() => {
+    return calculateCustomerCreditMetrics(customer, invoices);
+  }, [customer, invoices]);
+
   const handleAddNoteSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!noteContent.trim()) return;
@@ -140,7 +145,13 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({ custom
     return { text: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', bar: 'bg-rose-500' };
   };
 
-  const riskColors = getRiskColor(assessment?.riskLevel);
+  const effectiveRiskLevel = assessment?.riskLevel || creditMetrics.riskLevel;
+  const effectiveRiskScore = assessment?.riskScore ?? creditMetrics.score;
+  const effectiveRating = assessment?.reliabilityRating || creditMetrics.rating;
+  const effectiveAverageDays = assessment?.averageDaysToPay ?? creditMetrics.averageDaysToPay;
+  const effectiveOnTimePercentage = assessment?.onTimePaymentPercentage ?? creditMetrics.onTimePaymentPercentage;
+
+  const riskColors = getRiskColor(effectiveRiskLevel);
 
   return (
     <div className="p-3.5 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fadeIn pb-24 lg:pb-8">

@@ -64,10 +64,10 @@ export const InvoiceEditor: React.FC = () => {
   const [items, setItems] = useState<InvoiceItem[]>([
     {
       id: `item-${Date.now()}-1`,
-      description: 'Brand Identity Design & Visual System',
+      description: '',
       quantity: 1,
-      unitPrice: 50000,
-      total: 50000,
+      unitPrice: 0,
+      total: 0,
     },
   ]);
 
@@ -548,7 +548,7 @@ export const InvoiceEditor: React.FC = () => {
                     <input
                       type="text"
                       required
-                      placeholder="Service or product description"
+                      placeholder="e.g. Web Design, Catering Services, Consulting, Physical Goods"
                       value={item.description}
                       onChange={(e) => handleItemChange(index, 'description', e.target.value)}
                       className="flex-1 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 shadow-2xs"
@@ -585,7 +585,7 @@ export const InvoiceEditor: React.FC = () => {
                         required
                         value={item.unitPrice || ''}
                         onChange={(e) => handleItemChange(index, 'unitPrice', e.target.value)}
-                        placeholder="0"
+                        placeholder="Enter amount (e.g. 15000)"
                         className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900 font-mono text-right focus:outline-none focus:border-indigo-500 shadow-2xs"
                       />
                     </div>
@@ -596,6 +596,21 @@ export const InvoiceEditor: React.FC = () => {
                         {formatCurrency(item.total, currency || activeCurrency)}
                       </div>
                     </div>
+                  </div>
+
+                  {/* Quick Amount Suggestion Chips for Fast Entry */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px]">
+                    <span className="text-slate-400 font-medium">Quick amounts:</span>
+                    {[2500, 5000, 10000, 25000, 50000, 100000].map((amt) => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => handleItemChange(index, 'unitPrice', amt)}
+                        className="px-2 py-0.5 rounded-md bg-white border border-slate-200 hover:border-indigo-400 hover:text-indigo-600 text-slate-600 font-mono transition-colors cursor-pointer"
+                      >
+                        +{formatCurrency(amt, currency || activeCurrency)}
+                      </button>
+                    ))}
                   </div>
                 </div>
               ))}

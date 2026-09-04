@@ -26,6 +26,7 @@ import { useFirebaseAuth } from '../context/AuthContext';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { CURRENCIES } from '../utils/formatters';
 import { CurrencyCode } from '../types';
+import { AiDiagnosticLogsSection } from './AiDiagnosticLogsSection';
 
 export const SettingsView: React.FC = () => {
   const {
@@ -578,6 +579,9 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* AI Integration, Request/Response Logging & Diagnostics */}
+        <AiDiagnosticLogsSection />
 
         {/* Save Button */}
         <div className="flex items-center justify-between pt-2">

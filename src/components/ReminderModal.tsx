@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDate } from '../utils/formatters';
+import { callAiEndpoint } from '../services/aiClient';
 
 export const ReminderModal: React.FC = () => {
   const {
@@ -34,20 +35,16 @@ export const ReminderModal: React.FC = () => {
     const generate = async () => {
       setIsLoading(true);
       try {
-        const res = await fetch('/api/ai/follow-up', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            invoice: reminderModalInvoice,
-            business: businessProfile,
-            tone,
-            channel,
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setMessage(data.message || '');
-          setSubject(data.subject || '');
+        const { data } = await callAiEndpoint('/api/ai/follow-up', {
+          invoice: reminderModalInvoice,
+          business: businessProfile,
+          tone,
+          channel,
+        }, { timeoutMs: 12000 });
+
+        if (data?.message) {
+          setMessage(data.message);
+          setSubject(data.subject || `Payment Reminder: Invoice ${reminderModalInvoice.invoiceNumber}`);
         } else {
           // Fallback template
           setMessage(

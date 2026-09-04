@@ -20,6 +20,7 @@ import { formatCurrency, formatDate, getDaysDifference } from '../utils/formatte
 import { MonthlyIncomeGraph } from './MonthlyIncomeGraph';
 import { BillaAIIcon } from './BrandLogo';
 import { Invoice } from '../types';
+import { callAiEndpoint } from '../services/aiClient';
 
 export const DashboardView: React.FC = () => {
   const {
@@ -72,22 +73,18 @@ export const DashboardView: React.FC = () => {
   const refreshAiNarrative = async () => {
     setAiSummary((prev) => ({ ...prev, isLoading: true }));
     try {
-      const res = await fetch('/api/ai/narrative', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          businessName: businessProfile.name,
-          metrics,
-          overdueInvoices: overdueInvoices.map((i) => ({
-            customerName: i.customerName,
-            amount: i.total,
-            dueDate: i.dueDate,
-          })),
-          currencySymbol: activeCurrency === 'USD' ? '$' : '₦',
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const { data } = await callAiEndpoint('/api/ai/narrative', {
+        businessName: businessProfile.name,
+        metrics,
+        overdueInvoices: overdueInvoices.map((i) => ({
+          customerName: i.customerName,
+          amount: i.total,
+          dueDate: i.dueDate,
+        })),
+        currencySymbol: activeCurrency === 'USD' ? '$' : '₦',
+      }, { timeoutMs: 12000 });
+
+      if (data) {
         setAiSummary({
           greeting: data.greeting || `You're in good shape this week. ${formatCurrency(metrics.collected, activeCurrency)} has been collected.`,
           insight: data.insight || `You have ${formatCurrency(metrics.outstanding, activeCurrency)} outstanding.`,

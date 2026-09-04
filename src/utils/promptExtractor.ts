@@ -27,20 +27,24 @@ export function extractInvoiceFromPrompt(
 
   // 1. Extract Customer Name
   let customerName = 'Valued Client';
-  const forMatch = text.match(/(?:billed|invoiced|invoice|shoot for|consulted for|work for|for|to)\s+([A-Z][a-zA-Z]+)(?=\s*[:,\n]|\s+for|\s+at|\s+₦|\s+\$|\s+\d|\s+with)/i);
-  if (forMatch && forMatch[1] && forMatch[1].length > 1) {
-    customerName = forMatch[1];
+  const customerPrefixMatch = text.match(
+    /(?:billed|invoiced|invoice|bill|charge|send invoice to|work for|consulted for|shoot for|for|to)\s+([A-Za-z\s.-]+?)(?=\s*[:,\n]|\s+for\b|\s+at\b|\s+[₦\$€£]|\s+\b\d+|\s+with\b|\s+due\b|$)/i
+  );
+
+  if (customerPrefixMatch && customerPrefixMatch[1]) {
+    const candidate = customerPrefixMatch[1].trim();
+    if (candidate.length >= 2 && !/^(?:a|an|the|my|our|some|new|all)$/i.test(candidate)) {
+      customerName = candidate;
+    }
   } else {
-    const colonMatch = text.match(/^([A-Z][a-zA-Z\s]+?)\s*:/);
+    const colonMatch = text.match(/^([A-Za-z\s.-]+?)\s*:/);
     if (colonMatch && colonMatch[1]) {
       customerName = colonMatch[1].trim();
-    } else {
-      const genericMatch = text.match(/(?:billed|invoice)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i);
-      if (genericMatch && genericMatch[1]) {
-        customerName = genericMatch[1].trim();
-      }
     }
   }
+
+  // Clean customer name if any trailing punctuation
+  customerName = customerName.replace(/^[:,\s-]+|[:,\s-]+$/g, '');
 
   // 2. Extract Discount
   let discountPercentage = 0;
@@ -86,8 +90,8 @@ export function extractInvoiceFromPrompt(
   for (const clause of clauses) {
     const priceMatch =
       clause.match(/(?:[₦\$€£]|NGN|USD|EUR|GBP|KES|GHS)\s*([\d,]+(?:\.\d+)?)/i) ||
-      clause.match(/\bat\s+([\d,]+(?:\.\d+)?)/i) ||
-      clause.match(/\b(\d{1,3}(?:,\d{3})+|\d{4,9})\b/);
+      clause.match(/(?:at|for|fee of|worth|costing)\s+([\d,]+(?:\.\d+)?)/i) ||
+      clause.match(/\b(\d{1,3}(?:,\d{3})+|\d{3,9})\b/);
     if (!priceMatch) continue;
 
     const rawNum = (priceMatch[1] || priceMatch[0]).replace(/[^0-9.]/g, '');
@@ -111,11 +115,11 @@ export function extractInvoiceFromPrompt(
       .replace(/\bwith\s+\d+%.*$/i, '');
 
     if (customerName && customerName !== 'Valued Client') {
-      desc = desc.replace(new RegExp('.*?' + customerName + '[:\\s]*', 'i'), '');
+      desc = desc.replace(new RegExp('.*?' + customerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[:\\s]*', 'i'), '');
     }
 
     desc = desc
-      .replace(/^(?:for|billed|to|consulted for|work for|photographed|invoice)\s+/i, '')
+      .replace(/^(?:for|billed|to|consulted for|work for|photographed|invoice|bill)\s+/i, '')
       .replace(/^\d+\s*(?:x|sprints?|hours?|items?|units?|audits?)?\s*/i, '')
       .replace(/\s+for\s*$/i, '')
       .replace(/^[:,\s-]+|[:,\s-]+$/g, '')
@@ -128,7 +132,10 @@ export function extractInvoiceFromPrompt(
       else if (/maintenance|web/i.test(clause)) desc = 'Website Maintenance';
       else if (/lighting|studio/i.test(clause)) desc = 'Studio Lighting & Equipment Fee';
       else if (/seo|audit/i.test(clause)) desc = 'SEO Strategy & Technical Audit';
-      else desc = 'Professional Services';
+      else if (/cake|food|cater/i.test(clause)) desc = 'Catering Services';
+      else if (/cloth|tailor|wear|dress/i.test(clause)) desc = 'Bespoke Tailoring & Fashion';
+      else if (/repair|wire|plumb/i.test(clause)) desc = 'Technical & Maintenance Services';
+      else desc = 'Goods & Professional Services';
     }
 
     desc = desc.charAt(0).toUpperCase() + desc.slice(1);
@@ -142,14 +149,30 @@ export function extractInvoiceFromPrompt(
     });
   }
 
+  // If no items were parsed by clause, look for any price or default to 0 for real entry
   if (items.length === 0) {
-    const anyNumber = text.match(/\b(\d{1,3}(?:,\d{3})+|\d{4,9})\b/);
-    const fallbackAmount = anyNumber ? parseFloat(anyNumber[1].replace(/,/g, '')) : 50000;
+    const anyNumberMatch = text.match(/(?:[₦\$€£]|NGN|USD|EUR|GBP)?\s*(\d{1,3}(?:,\d{3})+|\d{3,9})/i);
+    const detectedAmount = anyNumberMatch ? parseFloat(anyNumberMatch[1].replace(/,/g, '')) : 0;
+
+    // Extract description from prompt text
+    let promptDesc = text
+      .replace(new RegExp(customerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '')
+      .replace(/\b(?:invoice|bill|billed|invoiced|charge|to|for|due in \d+ days?)\b/gi, '')
+      .replace(/[₦\$€£\d,]+/g, '')
+      .replace(/^[:,\s-]+|[:,\s-]+$/g, '')
+      .trim();
+
+    if (!promptDesc || promptDesc.length < 2) {
+      promptDesc = 'Professional Services';
+    } else {
+      promptDesc = promptDesc.charAt(0).toUpperCase() + promptDesc.slice(1);
+    }
+
     items.push({
-      description: 'Professional Services',
+      description: promptDesc,
       quantity: 1,
-      unitPrice: fallbackAmount,
-      total: fallbackAmount,
+      unitPrice: detectedAmount,
+      total: detectedAmount,
     });
   }
 
@@ -161,6 +184,6 @@ export function extractInvoiceFromPrompt(
     items,
     discountPercentage,
     dueDate,
-    notes: `Created via Billa AI prompt extraction: "${promptText.slice(0, 70)}${promptText.length > 70 ? '...' : ''}"`,
+    notes: `Created via Billa AI prompt: "${promptText.slice(0, 70)}${promptText.length > 70 ? '...' : ''}"`,
   };
 }
