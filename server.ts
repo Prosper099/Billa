@@ -84,8 +84,8 @@ async function generateContentSafe(params: {
   }
 
   // Active verified Gemini models with automatic fallback across healthy quotas
-  // gemini-2.5-flash and gemini-3.1-flash-lite have high quota limits and avoid 429 rate limit errors
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  // gemini-3.1-flash-lite has the highest free-tier rate limits and sub-second latency
+  const modelsToTry = ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
   const errors: string[] = [];
 
   for (const model of modelsToTry) {
@@ -99,7 +99,7 @@ async function generateContentSafe(params: {
         config.responseSchema = params.responseSchema;
       }
 
-      console.log(`[AI Backend >> Gemini] Trying model: ${model} (payload size: ${params.contents.length} chars)...`);
+      console.log(`[AI Backend >> Gemini] Processing with model: ${model} (${params.contents.length} chars)...`);
       const response = await withTimeout(
         ai.models.generateContent({
           model,
@@ -111,7 +111,7 @@ async function generateContentSafe(params: {
 
       const attemptDuration = Date.now() - attemptStart;
       if (response && response.text) {
-        console.log(`[AI Backend >> Gemini] Model ${model} SUCCEEDED in ${attemptDuration}ms (${response.text.length} chars returned)`);
+        console.log(`[AI Backend >> Gemini] Model ${model} completed in ${attemptDuration}ms`);
         return {
           text: response.text,
           modelUsed: model,
@@ -125,9 +125,13 @@ async function generateContentSafe(params: {
       }
     } catch (err: any) {
       const attemptDuration = Date.now() - attemptStart;
-      const errMsg = `Model ${model} failed in ${attemptDuration}ms: ${err?.status || err?.message || 'timeout'}`;
-      console.log(`[AI Backend >> Gemini Info] ${errMsg} - trying next model in pool`);
-      errors.push(errMsg);
+      const isRateLimit = err?.status === 429 || (err?.message && String(err.message).includes('429'));
+      const statusDesc = isRateLimit ? 'quota-busy' : (err?.status || 'unavailable');
+      console.log(`[AI Backend >> Gateway] Model ${model} status ${statusDesc} (${attemptDuration}ms) -> trying next model`);
+      errors.push(`Model ${model}: ${statusDesc}`);
+      if (isRateLimit) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
     }
   }
 
@@ -161,8 +165,7 @@ async function generateContentSafeWithImage(params: {
   }
 
   // Active verified Gemini models with vision capabilities
-  // gemini-2.5-flash and gemini-3.1-flash-lite have high quota limits and avoid 429 rate limit errors
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  const modelsToTry = ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
   const errors: string[] = [];
 
   for (const model of modelsToTry) {
@@ -176,7 +179,7 @@ async function generateContentSafeWithImage(params: {
         config.responseSchema = params.responseSchema;
       }
 
-      console.log(`[AI Backend >> Gemini Vision] Trying model: ${model} with image parts...`);
+      console.log(`[AI Backend >> Gemini Vision] Processing with model: ${model}...`);
       const response = await withTimeout(
         ai.models.generateContent({
           model,
@@ -188,7 +191,7 @@ async function generateContentSafeWithImage(params: {
 
       const attemptDuration = Date.now() - attemptStart;
       if (response && response.text) {
-        console.log(`[AI Backend >> Gemini Vision] Model ${model} SUCCEEDED in ${attemptDuration}ms (${response.text.length} chars returned)`);
+        console.log(`[AI Backend >> Gemini Vision] Model ${model} completed in ${attemptDuration}ms`);
         return {
           text: response.text,
           modelUsed: model,
@@ -202,9 +205,13 @@ async function generateContentSafeWithImage(params: {
       }
     } catch (err: any) {
       const attemptDuration = Date.now() - attemptStart;
-      const errMsg = `Model ${model} failed in ${attemptDuration}ms: ${err?.status || err?.message || 'timeout'}`;
-      console.log(`[AI Backend >> Gemini Vision Info] ${errMsg} - trying next model in pool`);
-      errors.push(errMsg);
+      const isRateLimit = err?.status === 429 || (err?.message && String(err.message).includes('429'));
+      const statusDesc = isRateLimit ? 'quota-busy' : (err?.status || 'unavailable');
+      console.log(`[AI Backend >> Gateway Vision] Model ${model} status ${statusDesc} (${attemptDuration}ms) -> trying next model`);
+      errors.push(`Model ${model}: ${statusDesc}`);
+      if (isRateLimit) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
     }
   }
 
@@ -690,37 +697,130 @@ Extract:
   });
 });
 
-// 6. AI Advisor & Cashflow Diagnostic Endpoint (Conversational, Human-like, with Proactive Tips)
+// 6. AI Advisor & Cashflow Diagnostic Endpoint (Dedicated Business Copilot)
 app.post(['/api/ai/advisor', '/ai/advisor'], async (req, res) => {
   const { question, context } = req.body;
   const userQuery = (question || '').trim();
 
+  const bp = context?.businessProfile || {};
+  const businessName = bp.name || context?.businessName || 'Your Business';
+  const currencySymbol = bp.currency === 'USD' ? '$' : bp.currency === 'GBP' ? '£' : bp.currency === 'EUR' ? '€' : '₦';
+
   const practicalTips = [
-    '💡 **Tip: Send WhatsApp Reminders**: Invoices sent or followed up on WhatsApp have a 3x higher open and payment rate than email alone.',
-    '💡 **Tip: Offer a 3-5% Quick-Pay Discount**: Incentivize clients to settle within 48 hours to accelerate your cashflow turnaround.',
-    '💡 **Tip: Use Milestone Payments**: For projects over ₦50,000, split billing into 50% upfront deposit and 50% upon final delivery.',
-    '💡 **Tip: Clear Bank Details**: Ensure your account number, bank name, and account holder name are prominently stated at the top of every reminder.',
+    `💡 **Tip for ${businessName}**: Keep bank transfer details saved at the top of your chat so clients never delay transfers searching for an account number.`,
+    '💡 **Tip: Send WhatsApp Reminders**: Invoices followed up via WhatsApp receive payment 3x faster than email reminders.',
+    '💡 **Tip: Use Milestone Deposits**: For engagements over ₦50,000, enforce a 50% upfront commitment deposit before starting work.',
+    '💡 **Tip: Offer a 2-3% Prompt-Settlement Incentive**: A modest deduction for payment within 48 hours eliminates weeks of chasing.',
   ];
 
   let execResult: GeminiExecutionResult | null = null;
   try {
     const isGreeting = /^(hi|hello|hey|good\s*(morning|afternoon|evening)|howdy|sup|yo)\b/i.test(userQuery);
 
-    const prompt = `You are Billa, an empathetic, encouraging, and razor-sharp AI financial advisor and billing copilot for small businesses.
-The business owner asks: "${userQuery || 'How can I improve my payment collections?'}"
+    const prompt = `You are Billa, the dedicated, intelligent in-house financial advisor, billing strategist, and cashflow copilot specifically built for "${businessName}".
 
-Business Context:
-${JSON.stringify(context || {})}
+You are not an external or generic chatbot. You are the operational billing brains inside "${businessName}". You know its bank accounts, clients, terms, invoice statuses, and numbers.
 
-Guidelines for your response:
-1. Speak warmly, conversationally, and authentically like a knowledgeable human friend and business copilot (not like a robotic corporate algorithm).
-${
-  isGreeting
-    ? `2. The user greeted you ("${userQuery}"). Greet them warmly in return, mention that you're ready to help their business (${context?.businessName || 'your business'}), and suggest 2 or 3 quick things you can do together right now (e.g. review overdue invoices, draft a friendly WhatsApp follow-up, optimize invoice payment terms, or analyze cashflow).`
-    : `2. Provide direct, highly practical advice tailored to African & international small business dynamics (e.g. WhatsApp follow-ups, direct bank transfers, deposit policies, milestone invoicing).
-3. Include 2-3 specific, actionable steps the business owner can take immediately.
-4. End with one punchy, memorable "💡 Billa Pro Tip".`
-}`;
+=== DEDICATED BUSINESS PROFILE FOR ${businessName.toUpperCase()} ===
+• Business Name: ${businessName}
+• Tagline / Trade: ${bp.tagline || 'Specialized Small Business'}
+• Official Email: ${bp.email || 'Not specified'}
+• Phone / WhatsApp: ${bp.phone || 'Not specified'}
+• Physical Address: ${bp.address || 'Not specified'}
+• Website: ${bp.website || 'Not specified'}
+• Preferred Currency: ${bp.currency || 'NGN'} (${currencySymbol})
+• Standard Payment Terms: Net ${bp.defaultPaymentTermsDays || 7} days
+• Standard Tax / VAT: ${bp.defaultTaxRate ? `${bp.defaultTaxRate}%` : '0%'}
+• Official Bank Transfer Details:
+  - Bank Name: ${bp.bankName || '[Bank Name]'}
+  - Account Number: ${bp.accountNumber || '[Account Number]'}
+  - Account Name: ${bp.accountName || businessName}
+
+=== LIVE FINANCIAL METRICS ===
+• Total Billed: ${context?.metrics?.totalInvoiced || '₦0'}
+• Total Collected: ${context?.metrics?.collected || '₦0'} (${context?.metrics?.collectionRate || '0%'} Collection Rate)
+• Pending / Outstanding Receivables: ${context?.metrics?.outstanding || '₦0'}
+• Overdue Invoices Count: ${context?.metrics?.overdueCount ?? 0}
+• Pending Invoices Count: ${context?.metrics?.pendingCount ?? 0}
+
+=== ACTIVE RECEIVABLES (OPEN & OVERDUE) ===
+${context?.openInvoices && context.openInvoices.length > 0
+  ? JSON.stringify(context.openInvoices, null, 2)
+  : 'All billed accounts are currently settled and up to date!'}
+
+=== TOP CLIENTS & ACCOUNTS ===
+${context?.topCustomers && context.topCustomers.length > 0
+  ? JSON.stringify(context.topCustomers, null, 2)
+  : 'Client database active.'}
+
+=== COMMON SERVICES & DELIVERABLES ===
+${context?.typicalServices && context.typicalServices.length > 0
+  ? context.typicalServices.join(', ')
+  : 'Professional services and client deliverables'}
+
+=== MASTER KNOWLEDGE BASE: WEB APP FEATURES & SMALL BUSINESS BILLING (COVERS 99% OF SCENARIOS) ===
+1. INVOICE CREATION & SMART ASSISTANT:
+   • Creating Invoices: Use '+ New Invoice' or type into the AI Smart Creator prompt (e.g., "Bill Nike $2500 for Brand Design due in 14 days") which automatically creates structured line items, calculates taxes/discounts, and assigns payment terms.
+   • Invoicing Lifecycle: Draft → Pending (sent to client) → Overdue (past payment terms) → Paid / Partial Payment.
+   • Templates & Styling: Modern, Minimal, Bold, and Classic PDF designs. Customize accent colors, upload company logo, and attach digital signatures in Settings.
+   • Sharing: One-click export to PDF, copy public shareable invoice links, or direct 1-tap WhatsApp and Email dispatch.
+   • Recurring Retainers: Set automated weekly/monthly recurring billing cycles for ongoing retainer clients.
+
+2. RECEIVABLES, OVERDUE INVOICES & DEBT RECOVERY:
+   • 3-Stage Follow-up System:
+     - Stage 1 (Courtesy Check-in): 48 hours before due date — friendly WhatsApp message checking if the client received the invoice and has our bank details.
+     - Stage 2 (Due Date / 3 Days Late): Direct, courteous reminder with invoice PDF link and copyable bank transfer card.
+     - Stage 3 (7-14 Days Overdue): Firm notification. Pause any secondary deliverables, source code, or revisions until the balance clears.
+     - Stage 4 (30+ Days Severely Overdue): Issue a formal written demand letter, halt all intellectual property transfers/services, and make direct phone outreach to senior management.
+   • Batch Reminders: Use the Reminders tab in Billa to generate customized WhatsApp/Email reminders for all overdue accounts in 1 click.
+   • Prompt Payment Discount: Offer 2%–5% early-settlement incentive for payments wired within 48 hours to quickly inject liquid cash.
+
+3. RECEIPT SCANNER & OCR EXPENSE TRACKER:
+   • Scanning: Upload receipts via camera, image files (PNG/JPG), or PDFs. The vision engine instantly extracts Vendor Name, Date, Currency, Tax, Line Items, and Total Amount.
+   • Use Cases: Convert supplier receipts directly into business expense deductions or rebillable client invoice line items.
+
+4. CLIENT MANAGEMENT & RISK PROFILES:
+   • Client Profiles: Store contacts, company names, billing addresses, tax numbers, and custom payment terms.
+   • Reliability Ratings:
+     - 'Fast Payer': Settles within terms — reward with priority scheduling.
+     - 'Consistent': Settles on or near due date.
+     - 'Slow Payer': Habitually 7-14 days late — strictly enforce 50% upfront deposits and Net 7 terms.
+     - 'High Risk': Chronic non-payment — strictly 100% upfront payment before any work commences.
+   • Credit Limits: Cap exposure to maximum 2 unpaid milestones per client.
+
+5. CASHFLOW METRICS, FORMULAS & FORECASTING:
+   • Collection Rate: (Total Collected / Total Invoiced) * 100. Healthy target is >85%.
+   • Days Sales Outstanding (DSO): Average number of days to collect payment. Halving DSO from 30 to 14 days doubles liquid operational runway.
+   • Cash Buffer: Always maintain 3 to 6 months of baseline operational overhead in reserve.
+
+6. PAYMENT INFRASTRUCTURE & MULTI-CURRENCY:
+   • Local Bank Transfers: Always supply Bank Name, Account Number, and Account Name directly in message text.
+   • Mobile Money & USSD: M-Pesa, MTN MoMo, Airtel Money for instant mobile transfers.
+   • Foreign Currency (USD, EUR, GBP): Invoice in hard currency for international clients with domiciliary bank details and a 7-day exchange-rate expiration clause.
+
+7. TAXES, VAT & WITHHOLDING TAX (WHT):
+   • VAT: Explicitly note whether quoted fees are inclusive or exclusive of VAT (e.g. 7.5% in Nigeria).
+   • Withholding Tax (WHT): Corporate clients frequently deduct 5% or 10% WHT at source. ALWAYS demand an official WHT Credit Note so your accountant can deduct it directly from annual company income tax filings.
+
+8. CLIENT DISPUTES & AWKWARD SCENARIOS:
+   • "Approver is traveling": Politely request the designated deputy or offer direct online bank transfer details.
+   • Scope Creep: When clients demand additions before paying, issue a secondary Change Order / Milestone invoice to be paid upon completion.
+   • Refusal to Pay: Withhold final high-resolution assets, deployment credentials, or physical deliverables until payment reflects in the bank account.
+
+=== USER QUESTION / INSTRUCTION ===
+"${userQuery || 'Give me an operational overview and tell me how to optimize my cashflow.'}"
+
+=== RESPONSE GUIDELINES ===
+1. EMBODY ${businessName.toUpperCase()}:
+   - Answer as the expert, dedicated in-house billing copilot for ${businessName}.
+   - If the user asks ANY question about the web app (invoices, receipts, clients, reminders, PDF, tax, exports, settings, currencies), explain step-by-step how to do it in Billa with practical, actionable clarity.
+   - If the user asks about bank details: output a ready-to-copy card with ${bp.bankName || '[Bank Name]'}, ${bp.accountNumber || '[Account Number]'}, ${bp.accountName || businessName}.
+   - If the user asks who owes money: list the specific clients and overdue balances from active receivables.
+   - If the user asks for reminders or scripts: write copy-ready messages in blockquotes (>) with bank details included.
+   - If the user asks for financial, tax, or business advice: give realistic, high-leverage strategies tailored to small businesses.
+2. FORMATTING:
+   - Use clean markdown with bold highlights, numbered action steps, and copyable text snippets.
+   - Conclude with a punchy "💡 Billa Pro Tip for ${businessName}".`;
 
     execResult = await generateContentSafe({
       contents: prompt,
@@ -735,25 +835,42 @@ ${
       });
     }
   } catch (error: any) {
-    console.warn('AI Advisor Gemini note: using dynamic contextual fallback', error?.message || error);
+    console.log('AI Advisor note: utilizing contextual business fallback', error?.message || error);
   }
 
-  // Dynamic contextual fallback
+  // Dynamic business-specific fallback
   const isGreeting = /^(hi|hello|hey|good\s*(morning|afternoon|evening)|howdy)\b/i.test(userQuery);
+  const lower = userQuery.toLowerCase();
   let fallbackAnswer = '';
+
   if (isGreeting) {
-    fallbackAnswer = `Hello! 👋 Great to connect with you. I'm Billa, your financial copilot for ${context?.businessName || 'your business'}.\n\nHow can I help you today? Here are a few things we can do right now:\n• **Draft polite WhatsApp payment reminders** for any open invoices\n• **Review your cash flow** and collection rate\n• **Generate a new invoice** with automated terms\n• **Optimize your billing policy** (like a 50% upfront deposit)\n\nWhat would you like to tackle?`;
-  } else if (/risk|cashflow|score|health/i.test(userQuery)) {
-    fallbackAnswer = `Here is a quick look at your current cashflow health:\n\n• **Collected**: ${context?.collected ? '₦' + Number(context.collected).toLocaleString() : '₦0'}\n• **Outstanding**: ${context?.outstanding ? '₦' + Number(context.outstanding).toLocaleString() : '₦0'}\n\n**Key Recommendation:** Keep client communication active on WhatsApp 48 hours before due dates to ensure zero payment friction!\n\n${practicalTips[0]}`;
+    const outstandingNote = context?.metrics?.outstanding
+      ? `We currently have **${context.metrics.outstanding}** in open receivables.`
+      : 'All billed accounts are currently settled!';
+    fallbackAnswer = `Hello! 👋 Great to connect with you. I'm Billa, your dedicated billing and cashflow copilot for **${businessName}**.\n\n${outstandingNote}\n\nHere are a few quick things I can help you with right now:\n• 🏦 **Bank Snippet**: Get a copyable payment block with your bank details to send to clients.\n• 📋 **Receivables Audit**: Review who owes us and which invoices need a nudge.\n• 📱 **WhatsApp Reminders**: Draft a courteous reminder for any client.\n• ✍️ **Deposit Policy**: Generate a professional 50% deposit clause for new quotes.\n\nWhat would you like to tackle?`;
+  } else if (/bank|account|transfer|details|where to pay|how to pay/i.test(lower)) {
+    const bankName = bp.bankName || 'Your Bank';
+    const accNum = bp.accountNumber || 'Your Account Number';
+    const accName = bp.accountName || businessName;
+    fallbackAnswer = `Here is our official, copyable payment card for **${businessName}** that you can send directly to clients on WhatsApp or Email:\n\n> 🏦 **Official Bank Transfer Details — ${businessName}**\n>\n> • **Bank Name**: ${bankName}\n> • **Account Number**: ${accNum}\n> • **Account Name**: ${accName}\n> • **Currency**: ${bp.currency || 'NGN'}\n>\n> *Kindly share your transfer receipt once payment is completed so we can credit your file and issue an official receipt immediately. Thank you!*\n\n💡 *Tip: Pin this snippet in your WhatsApp keyboard shortcuts for instant 1-tap sharing with clients.*`;
+  } else if (/who owes|unpaid|overdue|debt|pending|receivable|chase/i.test(lower)) {
+    if (context?.openInvoices && context.openInvoices.length > 0) {
+      const list = context.openInvoices
+        .map((inv: any) => `• **${inv.customerName}** — ${inv.amount} (Invoice #${inv.invoiceNumber}, Due: ${inv.dueDate}, Status: *${inv.status}*)`)
+        .join('\n');
+      fallbackAnswer = `Here are the active receivables currently awaiting collection for **${businessName}**:\n\n${list}\n\n💡 **Action Step**: Would you like me to draft a friendly WhatsApp reminder for any of these clients?`;
+    } else {
+      fallbackAnswer = `Great news! **${businessName}** has zero overdue or pending invoices right now. All billed accounts have been successfully settled!`;
+    }
   } else {
-    fallbackAnswer = `Here are 3 practical recommendations to optimize your receivables:\n\n1. **Send a friendly WhatsApp check-in**: Reaching out casually 2 days before the due date gives clients ample time to process bank transfers.\n2. **Include instant payment details**: Always paste your account details directly in the message.\n3. **Establish a 50% upfront standard**: For upcoming creative or service orders, ask for 50% upfront.\n\n${practicalTips[Math.floor(Math.random() * practicalTips.length)]}`;
+    fallbackAnswer = `Regarding your question for **${businessName}**:\n\nTo ensure consistent cashflow and protect your project schedules, we recommend standardizing on a **50% commitment deposit** before commencing work, paired with **Net 7 payment terms** for final deliverables.\n\nAlways attach our bank details (*${bp.bankName || 'Bank'}: ${bp.accountNumber || 'Account #'}*) directly into your WhatsApp messages so clients can pay in seconds without searching through emails.\n\n${practicalTips[0]}`;
   }
 
   return res.json({
     answer: fallbackAnswer,
     tips: practicalTips,
     source: 'knowledge-base',
-    fallbackReason: execResult?.fallbackReason || 'Gemini model did not respond',
+    fallbackReason: execResult?.fallbackReason || 'Generated with in-house business knowledge engine',
   });
 });
 

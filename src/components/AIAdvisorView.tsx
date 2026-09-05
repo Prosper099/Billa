@@ -24,6 +24,7 @@ export const AIAdvisorView: React.FC = () => {
   const {
     businessProfile,
     invoices,
+    customers,
     metrics,
     activeCurrency,
     showToast,
@@ -54,10 +55,12 @@ export const AIAdvisorView: React.FC = () => {
   const [isChatLoading, setIsChatLoading] = useState(false);
 
   const proactivePrompts = [
+    '🏦 Copy our official bank transfer payment card',
+    '📋 Who owes us money and what invoices are open?',
     '💡 How can I get clients to pay 3 days faster?',
-    '📊 Analyze my current cashflow risk score',
-    '✍️ Draft a polite 50% deposit policy for quotes',
-    '📱 What is the best WhatsApp reminder script?',
+    '📊 Analyze our cashflow risk score & collection rate',
+    '✍️ Draft our studio 50% upfront deposit policy',
+    '📱 Generate a polite WhatsApp reminder for overdue clients',
   ];
 
   const sampleInvoiceFallback = {
@@ -139,40 +142,107 @@ export const AIAdvisorView: React.FC = () => {
     ]);
     setIsChatLoading(true);
 
+    // Compile rich business context tailored to this specific business
+    const invoicedServices = Array.from(
+      new Set(
+        invoices
+          .flatMap((inv) => inv.items?.map((it) => it.description.trim()) || [])
+          .filter((desc) => desc && desc.length > 0)
+      )
+    ).slice(0, 10);
+
+    const openInvoicesList = invoices
+      .filter((inv) => inv.status === 'pending' || inv.status === 'overdue')
+      .slice(0, 8)
+      .map((inv) => ({
+        invoiceNumber: inv.invoiceNumber,
+        customerName: inv.customerName,
+        amount: formatCurrency(inv.total, activeCurrency),
+        dueDate: inv.dueDate,
+        status: inv.status,
+      }));
+
+    const topCustomers = customers.slice(0, 6).map((c) => ({
+      name: c.name,
+      company: c.companyName || '',
+      totalBilled: formatCurrency(c.totalBilled || 0, activeCurrency),
+      outstanding: formatCurrency(c.outstandingBalance || 0, activeCurrency),
+      reliability: c.paymentReliability || 'standard',
+    }));
+
     const context = {
-      businessName: businessProfile.name,
-      totalInvoiced: metrics.totalInvoiced,
-      collected: metrics.collected,
-      outstanding: metrics.outstanding,
-      overdueCount: metrics.overdueInvoicesCount,
-      collectionRate: metrics.collectionRate,
+      businessProfile: {
+        name: businessProfile.name || 'Your Business',
+        tagline: businessProfile.tagline || '',
+        email: businessProfile.email || '',
+        phone: businessProfile.phone || '',
+        address: businessProfile.address || '',
+        website: businessProfile.website || '',
+        bankName: businessProfile.bankName || '',
+        accountNumber: businessProfile.accountNumber || '',
+        accountName: businessProfile.accountName || '',
+        currency: activeCurrency,
+        defaultPaymentTermsDays: businessProfile.defaultPaymentTermsDays || 7,
+        defaultTaxRate: businessProfile.defaultTaxRate || 0,
+        taxNumber: businessProfile.taxNumber || '',
+      },
+      metrics: {
+        totalInvoiced: formatCurrency(metrics.totalInvoiced, activeCurrency),
+        collected: formatCurrency(metrics.collected, activeCurrency),
+        outstanding: formatCurrency(metrics.outstanding, activeCurrency),
+        overdueCount: metrics.overdueInvoicesCount,
+        pendingCount: metrics.pendingInvoicesCount,
+        collectionRate: `${metrics.collectionRate}%`,
+      },
+      openInvoices: openInvoicesList,
+      topCustomers,
+      typicalServices: invoicedServices.length > 0 ? invoicedServices : ['Custom Client Services', 'Professional Deliverables'],
     };
 
     const generateSmartLocalAdvice = (text: string): string => {
       const lower = text.toLowerCase().trim();
+      const bizName = businessProfile.name || 'your business';
 
       // Greetings
       if (/^(hi|hello|hey|good\s*(morning|afternoon|evening)|howdy|sup)\b/i.test(lower)) {
-        const bizName = businessProfile.name || 'your business';
         const pendingNote = metrics.outstanding > 0
-          ? `You currently have ${formatCurrency(metrics.outstanding, activeCurrency)} in pending receivables across ${metrics.pendingInvoicesCount} open invoice(s).`
+          ? `Currently, ${bizName} has **${formatCurrency(metrics.outstanding, activeCurrency)}** in pending receivables across ${metrics.pendingInvoicesCount} open invoice(s).`
           : 'All your billed accounts are currently settled and up to date!';
-        return `Hello! 👋 Great to connect with you. I'm Billa, your AI billing and cashflow copilot for ${bizName}. ${pendingNote}\n\nWhat would you like assistance with today? You can ask me to draft a reminder script, review payment risk, or recommend ways to get clients paying faster.`;
+        return `Hello! 👋 I'm Billa, the dedicated in-house billing copilot and financial strategist for **${bizName}**.\n\n${pendingNote}\n\nHere is how I can help you right now:\n• 🏦 **Bank Card**: Copy our verified bank transfer snippet to paste to a client\n• 📋 **Receivables Audit**: See who has open or overdue balances\n• 📱 **WhatsApp Follow-up**: Draft a high-converting payment reminder\n• ✍️ **Deposit Policy**: Generate a protective 50% commitment clause for quotes\n\nWhat would you like to do?`;
+      }
+
+      // Bank Details & Payment Snippet
+      if (/bank|account|transfer|details|where to pay|how to pay|payment card/i.test(lower)) {
+        const bName = businessProfile.bankName || 'Your Bank';
+        const aNum = businessProfile.accountNumber || 'Your Account Number';
+        const aName = businessProfile.accountName || bizName;
+        return `Here is the official, copy-ready payment snippet for **${bizName}**:\n\n> 🏦 **Official Bank Transfer Details — ${bizName}**\n>\n> • **Bank Name**: ${bName}\n> • **Account Number**: ${aNum}\n> • **Account Name**: ${aName}\n> • **Currency**: ${activeCurrency}\n>\n> *Kindly send a screenshot or PDF of your transfer receipt once completed so we can immediately mark your invoice as settled. Thank you for your business!*\n\n💡 *Tip: You can send this card directly to clients over WhatsApp or paste it into your emails.*`;
+      }
+
+      // Who owes money / Open Receivables
+      if (/who owes|unpaid|overdue|debt|pending|receivable|chase/i.test(lower)) {
+        if (openInvoicesList.length > 0) {
+          const list = openInvoicesList
+            .map((inv) => `• **${inv.customerName}**: ${inv.amount} (Invoice #${inv.invoiceNumber}, Due: ${inv.dueDate}, Status: *${inv.status}*)`)
+            .join('\n');
+          return `Here are the active invoices currently awaiting payment for **${bizName}**:\n\n${list}\n\n💡 **Recommendation**: Tap the **Reminders** tab or ask me to draft a friendly WhatsApp nudge for any of these clients!`;
+        }
+        return `Great news! **${bizName}** has no pending or overdue invoices right now. All client accounts are fully settled!`;
       }
 
       // Faster payment strategies
-      if (/faster|speed|delay|slow|chase|chasing|prompt/i.test(lower)) {
-        return `Here are 4 proven strategies to accelerate client payments by 3–5 days:
+      if (/faster|speed|delay|slow|chasing|prompt/i.test(lower)) {
+        return `Here are 4 proven strategies to accelerate client payments for **${bizName}** by 3–5 days:
 
 1. 📱 **Send Reminders via WhatsApp**: 85%+ of clients open and read WhatsApp messages within 15 minutes, compared to under 25% for emails.
 2. ⚡ **Offer a Quick-Pay Incentive**: A modest 2–3% prompt settlement discount for transfers completed within 48 hours dramatically improves turnover.
-3. ⏱️ **Tighten Payment Terms**: Shift standard milestones from Net 30 to Net 7 or "Due Upon Receipt" for deliverables.
-4. 🏦 **Prominent Bank Details**: Always place your Bank Name, Account Number, and Account Name at the very top of your reminder so clients can pay instantly without searching.`;
+3. ⏱️ **Standardize Payment Terms**: Maintain our standard **Net ${businessProfile.defaultPaymentTermsDays || 7} days** policy or "Due Upon Receipt" for final creative deliverables.
+4. 🏦 **Instant Bank Details**: Always paste our bank account (${businessProfile.bankName || 'Bank'} ${businessProfile.accountNumber || ''}) directly in the message text so clients don't have to open an attachment.`;
       }
 
       // Cashflow and Risk Assessment
-      if (/cashflow|risk|score|health|financial|receivable/i.test(lower)) {
-        return `📊 **Cashflow & Risk Health Assessment**:
+      if (/cashflow|risk|score|health|financial/i.test(lower)) {
+        return `📊 **Cashflow & Risk Health Assessment for ${bizName}**:
 • **Billed Total**: ${formatCurrency(metrics.totalInvoiced, activeCurrency)}
 • **Collected**: ${formatCurrency(metrics.collected, activeCurrency)} (${metrics.collectionRate}% Collection Rate)
 • **Pending Receivables**: ${formatCurrency(metrics.outstanding, activeCurrency)}
@@ -183,9 +253,9 @@ export const AIAdvisorView: React.FC = () => {
 
       // 50% Deposit Policy
       if (/deposit|policy|quote|commitment|upfront|50%/i.test(lower)) {
-        return `Here is a clear, professional 50% deposit clause you can insert into quotes or message to clients:
+        return `Here is a clear, professional 50% deposit clause customized for **${bizName}** that you can insert into quotes or message to clients:
 
-> *"To lock in project scheduling and commence immediate production, our standard studio policy requires a 50% commitment deposit. The remaining 50% balance is payable upon final milestone approval prior to delivery.\n\nBank Transfer Details:\n${businessProfile.bankName ? `🏦 ${businessProfile.bankName} | ${businessProfile.accountNumber} | ${businessProfile.accountName}` : '🏦 [Your Bank Name] | [Account Number] | [Account Name]'}"*
+> *"To lock in project scheduling and commence immediate production, our standard policy at ${bizName} requires a 50% commitment deposit. The remaining balance is payable upon milestone approval prior to final delivery.\n\nBank Transfer Details:\n${businessProfile.bankName ? `🏦 ${businessProfile.bankName} | ${businessProfile.accountNumber} | ${businessProfile.accountName}` : '🏦 [Your Bank Name] | [Account Number] | [Account Name]'}"*
 
 This secures your working capital, weeds out tire-kickers, and prevents non-payment before you invest time.`;
       }
@@ -193,27 +263,122 @@ This secures your working capital, weeds out tire-kickers, and prevents non-paym
       // WhatsApp reminder script
       if (/whatsapp|script|reminder|template|message|nudge/i.test(lower)) {
         const bankInfo = businessProfile.bankName ? `${businessProfile.bankName} - ${businessProfile.accountNumber} (${businessProfile.accountName})` : '[Bank Name] - [Account Number]';
-        return `Here is a high-converting, courteous WhatsApp payment reminder template:
+        return `Here is a high-converting, courteous WhatsApp payment reminder template for **${bizName}**:
 
-> *"Hi [Client Name]! 👋 Hope you're having a wonderful week.\n\nJust a quick courtesy reminder regarding Invoice #[InvoiceNumber] for [Amount], which is due on [DueDate].\n\n🏦 Payment Details:\nBank: ${bankInfo}\n\nKindly send over your transfer receipt once settled so we can update your file immediately. Thank you so much!\n— ${businessProfile.name || 'Billa'}"*`;
+> *"Hi [Client Name]! 👋 Hope you're having a wonderful week.\n\nJust a quick courtesy reminder regarding Invoice #[InvoiceNumber] for [Amount], which is due on [DueDate].\n\n🏦 Payment Details:\nBank: ${bankInfo}\n\nKindly send over your transfer receipt once settled so we can update your file immediately. Thank you so much!\n— ${bizName}"*`;
       }
 
-      // Tax & VAT
+      // Tax & VAT & Withholding Tax (WHT)
       if (/tax|vat|wht|withholding/i.test(lower)) {
-        return `When invoicing corporate clients, explicitly state whether VAT (e.g., 7.5%) is inclusive or exclusive on your line items. If a client deducts Withholding Tax (WHT), always request their official WHT credit note so you can offset it against your corporate tax obligations.`;
+        return `Tax & Withholding Tax Guide for **${bizName}**:
+
+• **Standard Tax Rate**: Currently configured at **${businessProfile.defaultTaxRate || 0}%**. You can adjust this anytime in **Settings**.
+• **VAT Invoicing**: Always explicitly mark on your line items whether prices are *Inclusive* or *Exclusive* of VAT so clients do not arbitrarily deduct tax from your earnings.
+• **Withholding Tax (WHT) by Corporates**: Many corporate/enterprise clients automatically deduct 5% or 10% WHT before wiring funds.
+  - **Rule**: If a client deducts WHT, NEVER let it disappear into thin air.
+  - **Action**: Immediately demand an official **WHT Credit Note** from their finance team.
+  - **Benefit**: Your accountant or tax authority can use this credit note as a direct cash deduction against your annual company income tax liabilities!`;
       }
 
       // Receipt Scanning & OCR
-      if (/receipt|scan|ocr|camera|photo/i.test(lower)) {
-        return `You can scan physical receipts and invoices with your camera or file upload using the **Scan Receipt** button on the Invoices dashboard. Billa automatically extracts line items, quantities, merchant name, tax, and totals into an invoice draft instantly.`;
+      if (/receipt|scan|ocr|camera|photo|expense/i.test(lower)) {
+        return `Receipt & Expense Scanning Guide for **${bizName}**:
+
+• **Where to Scan**: Click the **Scan Receipt** button on the Invoices dashboard or tap the camera icon.
+• **Supported Formats**: Snap a live camera photo, or upload existing image files (JPG, PNG) or digital PDFs.
+• **AI Extraction**: Billa's vision engine instantly reads the merchant name, date, line items, taxes, currency, and total amount.
+• **Actionable Uses**:
+  1. Save as an operational business expense to track real net margins.
+  2. Convert directly into billable client invoice line items for project reimbursements.`;
+      }
+
+      // Invoice Creation & Smart Prompt
+      if (/create invoice|new invoice|how to invoice|make invoice|generate invoice|prompt/i.test(lower)) {
+        return `How to Create Invoices in Billa for **${bizName}**:
+
+1. **AI Smart Creator (Fastest)**:
+   - Type naturally into the prompt box at the top of the Invoices view, like:
+   > *"Bill Acme Corp ₦450,000 for Mobile App UI/UX Design due in 14 days"*
+   - Billa will instantly parse the client, amount, line items, and payment terms into a complete invoice draft.
+2. **Manual Form**:
+   - Click **+ New Invoice** on the top right.
+   - Select or add a customer, set the issue and due dates, and add line items with rates, quantities, and discounts.
+3. **Save & Dispatch**:
+   - Save as **Draft** or **Pending**, then download a PDF, copy a public view link, or tap **WhatsApp** to send directly.`;
+      }
+
+      // PDF Templates, Logo & Branding
+      if (/pdf|template|logo|brand|color|design|signature|look/i.test(lower)) {
+        return `Customizing Your Invoice Brand & PDF for **${bizName}**:
+
+• **Templates**: Billa offers 4 distinct styles: **Modern**, **Minimal**, **Bold**, and **Classic**. Choose your preferred layout in **Settings**.
+• **Brand Colors**: Pick your company's primary accent color to tint tables, headers, and badges.
+• **Company Logo**: Upload your PNG/JPG logo in Settings; it will be automatically sized and embedded on every exported PDF.
+• **Digital Signature**: Add your authorized signatory name or digital signature image to make every invoice legally binding.`;
+      }
+
+      // Recurring Invoices & Retainers
+      if (/recurring|retainer|subscription|monthly|repeat|auto/i.test(lower)) {
+        return `Recurring Retainers & Subscriptions in Billa:
+
+• **When to use**: For clients on monthly maintenance, ongoing marketing, consulting retainers, or software subscriptions.
+• **How it works**: Toggle **Recurring Invoice** when creating or editing an invoice, and set the repeat cycle (Weekly, Monthly, Quarterly).
+• **Benefit**: Billa prepares the next billing cycle automatically so you never forget to bill ongoing services on the 1st of the month!`;
+      }
+
+      // Late Payers, Chasing & Debt Escalation
+      if (/late|refuse|ghost|excuse|ignore|dispute|delay|won't pay|dont pay|not paying/i.test(lower)) {
+        return `The 4-Stage Debt Recovery Playbook for **${bizName}**:
+
+1. **Stage 1 (Day 1 Overdue — Gentle Courtesy Check-in)**:
+   - Assume it's a simple oversight. Send a friendly WhatsApp message with our bank details asking if they need anything to process payment.
+2. **Stage 2 (Day 7 Overdue — Official Follow-up)**:
+   - Send the official overdue notice from the **Reminders** tab. Politely remind them of our Net ${businessProfile.defaultPaymentTermsDays || 7} terms.
+3. **Stage 3 (Day 14 Overdue — Service Pause Warning)**:
+   - Inform the client that active production, source files, or ongoing support will be paused until the balance is settled.
+4. **Stage 4 (Day 30+ Severely Overdue — Final Notice)**:
+   - Issue a formal written final demand. Make a direct phone call to senior leadership or finance directors. Withhold all copyrights, logins, and project deliverables.`;
+      }
+
+      // Multi-Currency & International Clients
+      if (/currency|dollar|usd|foreign|international|exchange|gbp|eur/i.test(lower)) {
+        return `International Billing & Multi-Currency for **${bizName}**:
+
+• **Switching Currencies**: Billa supports NGN (₦), USD ($), GBP (£), EUR (€), and other global currencies. Toggle the currency directly when creating an invoice.
+• **Foreign Exchange Fluctuation Tip**: When quoting international clients in foreign currency, add a clause: *"Invoice is valid for 7 days based on current FX interbank settlement rates."*
+• **Bank Details**: If accepting USD/GBP/EUR, ensure your Domiciliary Bank Account or foreign routing details are saved in Settings so clients can wire funds smoothly.`;
+      }
+
+      // Export, Backup & Reports
+      if (/export|csv|excel|backup|download data|report|accountant/i.test(lower)) {
+        return `Data Export & Accounting Reports in Billa:
+
+• **CSV / Excel Export**: Navigate to **Reports** or **Settings** to export all your invoice histories, client records, and transaction logs in a universal CSV format.
+• **Sharing with Accountants**: Use the CSV export at month-end or tax season for your accountant or bookkeeping software (QuickBooks, Zoho, Excel).
+• **Local & Cloud Backup**: All your data is securely persisted in real time to both your local offline storage and your linked cloud database.`;
+      }
+
+      // Client Payment Ratings & Risk
+      if (/client rating|customer score|reliability|risk score|slow payer/i.test(lower)) {
+        return `Client Payment Reliability System in Billa:
+
+Billa tracks client payment habits automatically:
+• ⭐ **Fast Payer**: Consistently settles before or on the due date. Prioritize these clients for fast turnaround and discounts.
+• 🕒 **Consistent**: Pays within a few days of the due date.
+• ⚠️ **Slow Payer**: Frequently requires multiple reminders. Enforce a **50% upfront commitment deposit** before doing new work.
+• 🚨 **High Risk**: History of severe delays or disputes. Enforce **100% upfront payment** before commencing any project.`;
       }
 
       // General intelligent financial guidance
-      return `Regarding "${text}":
+      return `Regarding "${text}" for **${bizName}**:
 
-To maintain healthy working capital, establish clear milestone payment terms (Net 7 or Net 14), send proactive courtesy reminders 2 days prior to due dates via WhatsApp, and request a 50% commitment deposit on new engagements over ₦50,000.
+Here is the operational rule of thumb:
+1. **Terms**: Maintain standard **Net ${businessProfile.defaultPaymentTermsDays || 7} days** payment terms across all contracts.
+2. **Commitment**: Require a **50% upfront deposit** on creative and service projects to protect working capital.
+3. **Instant Details**: Always attach our official bank details (*${businessProfile.bankName || 'Bank'}: ${businessProfile.accountNumber || 'Account #'}*) directly into your message text so clients can pay in seconds.
+4. **Reminders**: Send courtesy nudges 48 hours before due dates via WhatsApp for a 3x higher collection speed.
 
-Would you like me to draft a reminder message, review open receivables, or configure a payment policy for a specific client?`;
+Would you like me to draft a reminder, check who currently owes us, or generate a copy-ready bank transfer snippet?`;
     };
 
     try {
