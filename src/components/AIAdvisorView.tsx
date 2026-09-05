@@ -19,6 +19,7 @@ import { formatCurrency, formatDate } from '../utils/formatters';
 import { BillaAIIcon } from './BrandLogo';
 import { Invoice } from '../types';
 import { callAiEndpoint } from '../services/aiClient';
+import { launchWhatsApp } from '../utils/whatsapp';
 
 export const AIAdvisorView: React.FC = () => {
   const {
@@ -572,19 +573,33 @@ Would you like me to draft a reminder, check who currently owes us, or generate 
                 {generatedMessage}
               </div>
 
-              {/* Instant WhatsApp Redirect Button */}
+              {/* Instant WhatsApp Launch Button */}
               {channel === 'whatsapp' && currentSelectedInvoice?.customerPhone && (
-                <a
-                  href={`https://wa.me/${currentSelectedInvoice.customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                    generatedMessage
-                  )}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm transition-colors"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  <span>Open WhatsApp Web ({currentSelectedInvoice.customerPhone})</span>
-                </a>
+                <div className="space-y-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      launchWhatsApp(currentSelectedInvoice.customerPhone!, generatedMessage)
+                    }
+                    className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm transition-colors cursor-pointer active:scale-[0.99]"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Open in WhatsApp ({currentSelectedInvoice.customerPhone})</span>
+                  </button>
+                  <div className="flex items-center justify-center gap-1 text-[11px] text-slate-500">
+                    <span>Opens in WhatsApp app.</span>
+                    <a
+                      href={`https://wa.me/${currentSelectedInvoice.customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                        generatedMessage
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-emerald-700 hover:underline font-medium ml-1"
+                    >
+                      No app? Open in browser
+                    </a>
+                  </div>
+                </div>
               )}
             </div>
           )}

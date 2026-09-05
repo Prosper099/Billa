@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDate } from '../utils/formatters';
+import { launchWhatsApp } from '../utils/whatsapp';
 import { Customer, CustomerNote } from '../types';
 import { calculateCustomerCreditMetrics } from '../utils/creditScoring';
 
@@ -274,15 +275,15 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({ custom
             <div className="flex items-center gap-2">
               <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               <span className="font-mono font-medium">{customer.phone}</span>
-              <a
-                href={`https://wa.me/${customer.phone.replace(/[^0-9]/g, '')}`}
-                target="_blank"
-                rel="noreferrer"
-                className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100/70 hover:bg-emerald-200/80 text-emerald-800 text-[10px] font-bold transition-colors"
+              <button
+                type="button"
+                onClick={() => launchWhatsApp(customer.phone, '')}
+                className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100/70 hover:bg-emerald-200/80 text-emerald-800 text-[10px] font-bold transition-colors cursor-pointer active:scale-95"
+                title="Open in WhatsApp application"
               >
                 <MessageCircle className="w-3 h-3" />
                 <span>WhatsApp</span>
-              </a>
+              </button>
             </div>
             <div className="flex items-center gap-2">
               <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />

@@ -37,6 +37,7 @@ import {
   INITIAL_TREND_DATA,
 } from '../data/mockData';
 import { callAiEndpoint } from '../services/aiClient';
+import { launchWhatsApp } from '../utils/whatsapp';
 
 export type ActiveView =
   | 'dashboard'
@@ -1280,10 +1281,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const cleanPhone = invoice.customerPhone.replace(/[^0-9]/g, '');
-    const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, '_blank');
+    launchWhatsApp(cleanPhone, message);
 
-    showToast('WhatsApp Reminder Sent', `Opened WhatsApp chat for ${invoice.customerName}`);
+    showToast('Opening WhatsApp', `Launching WhatsApp chat for ${invoice.customerName}`);
   };
 
   const autoScanAndDraftReminders = async (): Promise<any[]> => {

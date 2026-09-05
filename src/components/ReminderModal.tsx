@@ -12,6 +12,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { callAiEndpoint } from '../services/aiClient';
+import { launchWhatsApp } from '../utils/whatsapp';
 
 export const ReminderModal: React.FC = () => {
   const {
@@ -149,15 +150,27 @@ export const ReminderModal: React.FC = () => {
         {/* Actions */}
         <div className="space-y-2 pt-2">
           {whatsappPhone ? (
-            <a
-              href={whatsappUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
-            >
-              <MessageCircle className="w-4 h-4" />
-              <span>Send via WhatsApp Web ({reminderModalInvoice.customerPhone})</span>
-            </a>
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() => launchWhatsApp(whatsappPhone, message)}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer active:scale-[0.99]"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>Open in WhatsApp ({reminderModalInvoice.customerPhone})</span>
+              </button>
+              <div className="flex items-center justify-center gap-1 text-[11px] text-slate-500">
+                <span>Opens in WhatsApp app.</span>
+                <a
+                  href={whatsappUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-emerald-700 hover:underline font-medium ml-1"
+                >
+                  No app? Open in browser
+                </a>
+              </div>
+            </div>
           ) : null}
 
           <div className="flex gap-2">
