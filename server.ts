@@ -84,7 +84,8 @@ async function generateContentSafe(params: {
   }
 
   // Active verified Gemini models with automatic fallback across healthy quotas
-  const modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
+  // gemini-2.5-flash and gemini-3.1-flash-lite have high quota limits and avoid 429 rate limit errors
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
   const errors: string[] = [];
 
   for (const model of modelsToTry) {
@@ -119,13 +120,13 @@ async function generateContentSafe(params: {
         };
       } else {
         const err = `Model ${model} returned empty response in ${attemptDuration}ms`;
-        console.warn(`[AI Backend >> Gemini] ${err}`);
+        console.log(`[AI Backend >> Gemini] ${err}`);
         errors.push(err);
       }
     } catch (err: any) {
       const attemptDuration = Date.now() - attemptStart;
       const errMsg = `Model ${model} failed in ${attemptDuration}ms: ${err?.status || err?.message || 'timeout'}`;
-      console.warn(`[AI Backend >> Gemini Note] ${errMsg}`);
+      console.log(`[AI Backend >> Gemini Info] ${errMsg} - trying next model in pool`);
       errors.push(errMsg);
     }
   }
@@ -160,7 +161,8 @@ async function generateContentSafeWithImage(params: {
   }
 
   // Active verified Gemini models with vision capabilities
-  const modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
+  // gemini-2.5-flash and gemini-3.1-flash-lite have high quota limits and avoid 429 rate limit errors
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
   const errors: string[] = [];
 
   for (const model of modelsToTry) {
@@ -195,13 +197,13 @@ async function generateContentSafeWithImage(params: {
         };
       } else {
         const err = `Model ${model} returned empty vision response in ${attemptDuration}ms`;
-        console.warn(`[AI Backend >> Gemini Vision] ${err}`);
+        console.log(`[AI Backend >> Gemini Vision] ${err}`);
         errors.push(err);
       }
     } catch (err: any) {
       const attemptDuration = Date.now() - attemptStart;
       const errMsg = `Model ${model} failed in ${attemptDuration}ms: ${err?.status || err?.message || 'timeout'}`;
-      console.warn(`[AI Backend >> Gemini Vision Note] ${errMsg}`);
+      console.log(`[AI Backend >> Gemini Vision Info] ${errMsg} - trying next model in pool`);
       errors.push(errMsg);
     }
   }
