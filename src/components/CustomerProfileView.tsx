@@ -230,18 +230,16 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({ custom
             <div className="space-y-1.5">
               <div className="flex flex-wrap items-center gap-2.5">
                 <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">{customer.name}</h1>
-                {assessment && (
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${riskColors.bg} ${riskColors.text} border ${riskColors.border}`}
-                  >
-                    {assessment.riskLevel === 'low' ? (
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                    ) : (
-                      <ShieldAlert className="w-3.5 h-3.5" />
-                    )}
-                    <span>{assessment.reliabilityRating}</span>
-                  </span>
-                )}
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${riskColors.bg} ${riskColors.text} border ${riskColors.border}`}
+                >
+                  {effectiveRiskLevel === 'low' ? (
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                  ) : (
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                  )}
+                  <span>{effectiveRating}</span>
+                </span>
               </div>
 
               {customer.companyName && (
@@ -372,7 +370,7 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({ custom
                   </span>
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-3xl font-black font-mono text-slate-900">
-                      {assessment?.riskScore ?? 85}
+                      {effectiveRiskScore}
                     </span>
                     <span className="text-xs font-bold text-slate-400">/ 100</span>
                   </div>
@@ -382,10 +380,10 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({ custom
                   <span
                     className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${riskColors.bg} ${riskColors.text} border ${riskColors.border}`}
                   >
-                    {assessment?.riskLevel?.toUpperCase()} RISK
+                    {effectiveRiskLevel.toUpperCase()} RISK
                   </span>
                   <span className="block text-[10px] text-slate-400 mt-0.5">
-                    {assessment?.paymentConsistency || 'Consistent'} Flow
+                    {assessment?.paymentConsistency || (effectiveRiskScore >= 80 ? 'Very High' : 'Standard')} Flow
                   </span>
                 </div>
               </div>
@@ -394,7 +392,7 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({ custom
               <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
                 <div
                   className={`h-full ${riskColors.bar} transition-all duration-500 rounded-full`}
-                  style={{ width: `${assessment?.riskScore ?? 85}%` }}
+                  style={{ width: `${effectiveRiskScore}%` }}
                 />
               </div>
 
@@ -403,13 +401,13 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({ custom
                 <div>
                   <span className="text-[10px] text-slate-500 block">Avg Settlement Speed</span>
                   <span className="font-bold text-slate-800">
-                    ~{assessment?.averageDaysToPay ?? 7} business days
+                    ~{effectiveAverageDays} business days
                   </span>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 block">On-Time Settlement Rate</span>
                   <span className="font-bold text-slate-800">
-                    {assessment?.onTimePaymentPercentage ?? 90}%
+                    {effectiveOnTimePercentage}%
                   </span>
                 </div>
               </div>

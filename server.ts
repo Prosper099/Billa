@@ -2,7 +2,6 @@ import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
-import { createServer as createViteServer } from 'vite';
 import { extractInvoiceFromPrompt } from './src/utils/promptExtractor';
 
 dotenv.config();
@@ -27,13 +26,32 @@ function getGeminiClient(): GoogleGenAI | null {
   return aiClient;
 }
 
-// Safe Promise timeout helper
+// Safe Promise timeout helper with unhandled rejection prevention
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: any;
+  let settled = false;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`Operation timed out after ${ms}ms`)), ms);
+    timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        promise.catch(() => {});
+        reject(new Error(`Operation timed out after ${ms}ms`));
+      }
+    }, ms);
   });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  return Promise.race([
+    promise.then(
+      (res) => {
+        settled = true;
+        return res;
+      },
+      (err) => {
+        settled = true;
+        throw err;
+      }
+    ),
+    timeout,
+  ]).finally(() => clearTimeout(timer));
 }
 
 export interface GeminiExecutionResult {
@@ -197,7 +215,7 @@ async function generateContentSafeWithImage(params: {
 }
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get(['/api/health', '/health'], (req, res) => {
   res.json({
     status: 'ok',
     service: 'Billa API',
@@ -206,8 +224,8 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Middleware: Deep Logging for all /api/ai/* Requests and Responses
-app.use('/api/ai', (req, res, next) => {
+// Middleware: Deep Logging for all /api/ai/* and /ai/* Requests and Responses
+app.use(['/api/ai', '/ai'], (req, res, next) => {
   const startTime = Date.now();
   const endpoint = req.originalUrl;
   const method = req.method;
@@ -257,7 +275,7 @@ app.use('/api/ai', (req, res, next) => {
 });
 
 // 1. AI Financial Narrative Endpoint (Fast & Human-Like)
-app.post('/api/ai/narrative', async (req, res) => {
+app.post(['/api/ai/narrative', '/ai/narrative'], async (req, res) => {
   const { businessName, metrics, overdueInvoices, currencySymbol = '₦' } = req.body;
 
   const totalInvoiced = metrics?.totalInvoiced ?? 45000;
@@ -341,7 +359,7 @@ Respond conversationally, like a supportive human financial copilot. Return JSON
 });
 
 // 2. AI Follow-Up Generator Endpoint (WhatsApp / Email)
-app.post('/api/ai/follow-up', async (req, res) => {
+app.post(['/api/ai/follow-up', '/ai/follow-up'], async (req, res) => {
   const {
     invoice,
     business,
@@ -434,7 +452,7 @@ Rules:
 });
 
 // 3. AI Customer Insight & Risk Rating Endpoint
-app.post('/api/ai/customer-insight', async (req, res) => {
+app.post(['/api/ai/customer-insight', '/ai/customer-insight'], async (req, res) => {
   const { customer, invoices = [], businessProfile } = req.body;
 
   const customerInvoices = invoices.filter(
@@ -547,7 +565,7 @@ Provide a human-readable, practical risk assessment in JSON with:
 });
 
 // 4. AI Batch Overdue Reminders Generator
-app.post('/api/ai/batch-reminders', async (req, res) => {
+app.post(['/api/ai/batch-reminders', '/ai/batch-reminders'], async (req, res) => {
   const { overdueInvoices = [], businessProfile, tone = 'friendly' } = req.body;
   const businessName = businessProfile?.name || 'Apex Studios';
   const bankInfo = businessProfile?.accountNumber
@@ -593,7 +611,7 @@ app.post('/api/ai/batch-reminders', async (req, res) => {
 });
 
 // 5. AI Smart Invoice Creator (Prompt to Invoice)
-app.post('/api/ai/smart-extract', async (req, res) => {
+app.post(['/api/ai/smart-extract', '/ai/smart-extract'], async (req, res) => {
   const { prompt: promptText, defaultCurrency = 'NGN' } = req.body;
 
   if (!promptText || promptText.trim().length === 0) {
@@ -671,7 +689,7 @@ Extract:
 });
 
 // 6. AI Advisor & Cashflow Diagnostic Endpoint (Conversational, Human-like, with Proactive Tips)
-app.post('/api/ai/advisor', async (req, res) => {
+app.post(['/api/ai/advisor', '/ai/advisor'], async (req, res) => {
   const { question, context } = req.body;
   const userQuery = (question || '').trim();
 
@@ -738,7 +756,7 @@ ${
 });
 
 // 7. AI Receipt / Camera Capture Parser (Multimodal Vision OCR to Invoice)
-app.post('/api/ai/parse-receipt', async (req, res) => {
+const handleReceiptParse = async (req: express.Request, res: express.Response) => {
   const { imageBase64, mimeType, defaultCurrency = 'NGN' } = req.body;
 
   if (!imageBase64) {
@@ -911,17 +929,21 @@ Return valid JSON with these fields:
     source: 'ocr-fallback',
     fallbackReason: execResult?.fallbackReason || 'Vision model returned no data',
   });
-});
+};
+
+app.post(['/api/ai/parse-receipt', '/ai/parse-receipt'], handleReceiptParse);
+app.post(['/api/ai/scan-receipt', '/ai/scan-receipt'], handleReceiptParse);
 
 // Vite middleware & Static server
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (!process.env.VERCEL) {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
@@ -929,10 +951,24 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Billa server running on http://localhost:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Billa server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
-startServer();
+// Prevent process-level crashes from detached network requests or timeouts
+process.on('unhandledRejection', (reason: any) => {
+  console.warn('[Server Handled Unhandled Rejection]:', reason?.message || reason);
+});
+process.on('uncaughtException', (error: any) => {
+  console.warn('[Server Handled Uncaught Exception]:', error?.message || error);
+});
+
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
 

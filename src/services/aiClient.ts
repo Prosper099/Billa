@@ -123,10 +123,22 @@ export async function callAiEndpoint<TRes = any, TReq = any>(
     if (timeoutId) clearTimeout(timeoutId);
 
     status = res.status;
-    responseBody = await res.json();
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      try {
+        responseBody = await res.json();
+      } catch {
+        responseBody = { fallbackReason: 'Server returned unparseable JSON' };
+      }
+    } else {
+      const text = await res.text();
+      responseBody = {
+        fallbackReason: `Endpoint returned non-JSON (${status}): ${text.substring(0, 120)}`,
+      };
+    }
     const durationMs = Date.now() - startTime;
 
-    const source = responseBody?.source || (res.ok ? 'server' : 'error');
+    const source = responseBody?.source || (res.ok ? 'server' : 'offline-fallback');
     const isFallback =
       !res.ok ||
       (source !== 'gemini' && source !== 'gemini-vision') ||
@@ -172,7 +184,7 @@ export async function callAiEndpoint<TRes = any, TReq = any>(
     });
 
     return {
-      data: responseBody as TRes,
+      data: (responseBody || {}) as TRes,
       status,
       durationMs,
       source,
@@ -206,7 +218,14 @@ export async function callAiEndpoint<TRes = any, TReq = any>(
       error: errorMsg,
     });
 
-    throw err;
+    return {
+      data: {} as TRes,
+      status: 0,
+      durationMs,
+      source: 'offline-fallback',
+      isFallback: true,
+      fallbackReason: `Client network error: ${errorMsg}`,
+    };
   }
 }
 

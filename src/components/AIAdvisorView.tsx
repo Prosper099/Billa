@@ -139,49 +139,106 @@ export const AIAdvisorView: React.FC = () => {
     ]);
     setIsChatLoading(true);
 
+    const context = {
+      businessName: businessProfile.name,
+      totalInvoiced: metrics.totalInvoiced,
+      collected: metrics.collected,
+      outstanding: metrics.outstanding,
+      overdueCount: metrics.overdueInvoicesCount,
+      collectionRate: metrics.collectionRate,
+    };
+
+    const generateSmartLocalAdvice = (text: string): string => {
+      const lower = text.toLowerCase().trim();
+
+      // Greetings
+      if (/^(hi|hello|hey|good\s*(morning|afternoon|evening)|howdy|sup)\b/i.test(lower)) {
+        const bizName = businessProfile.name || 'your business';
+        const pendingNote = metrics.outstanding > 0
+          ? `You currently have ${formatCurrency(metrics.outstanding, activeCurrency)} in pending receivables across ${metrics.pendingInvoicesCount} open invoice(s).`
+          : 'All your billed accounts are currently settled and up to date!';
+        return `Hello! 👋 Great to connect with you. I'm Billa, your AI billing and cashflow copilot for ${bizName}. ${pendingNote}\n\nWhat would you like assistance with today? You can ask me to draft a reminder script, review payment risk, or recommend ways to get clients paying faster.`;
+      }
+
+      // Faster payment strategies
+      if (/faster|speed|delay|slow|chase|chasing|prompt/i.test(lower)) {
+        return `Here are 4 proven strategies to accelerate client payments by 3–5 days:
+
+1. 📱 **Send Reminders via WhatsApp**: 85%+ of clients open and read WhatsApp messages within 15 minutes, compared to under 25% for emails.
+2. ⚡ **Offer a Quick-Pay Incentive**: A modest 2–3% prompt settlement discount for transfers completed within 48 hours dramatically improves turnover.
+3. ⏱️ **Tighten Payment Terms**: Shift standard milestones from Net 30 to Net 7 or "Due Upon Receipt" for deliverables.
+4. 🏦 **Prominent Bank Details**: Always place your Bank Name, Account Number, and Account Name at the very top of your reminder so clients can pay instantly without searching.`;
+      }
+
+      // Cashflow and Risk Assessment
+      if (/cashflow|risk|score|health|financial|receivable/i.test(lower)) {
+        return `📊 **Cashflow & Risk Health Assessment**:
+• **Billed Total**: ${formatCurrency(metrics.totalInvoiced, activeCurrency)}
+• **Collected**: ${formatCurrency(metrics.collected, activeCurrency)} (${metrics.collectionRate}% Collection Rate)
+• **Pending Receivables**: ${formatCurrency(metrics.outstanding, activeCurrency)}
+• **Overdue Invoices**: ${metrics.overdueInvoicesCount}
+
+💡 **Action Plan**: ${metrics.overdueInvoicesCount > 0 ? `Prioritize following up on your ${metrics.overdueInvoicesCount} overdue invoice(s). Head to the Reminders tab to launch tailored WhatsApp reminders with one click.` : `Your billing flow is healthy! Continue applying upfront milestone deposits on new customer orders to keep your cash buffer strong.`}`;
+      }
+
+      // 50% Deposit Policy
+      if (/deposit|policy|quote|commitment|upfront|50%/i.test(lower)) {
+        return `Here is a clear, professional 50% deposit clause you can insert into quotes or message to clients:
+
+> *"To lock in project scheduling and commence immediate production, our standard studio policy requires a 50% commitment deposit. The remaining 50% balance is payable upon final milestone approval prior to delivery.\n\nBank Transfer Details:\n${businessProfile.bankName ? `🏦 ${businessProfile.bankName} | ${businessProfile.accountNumber} | ${businessProfile.accountName}` : '🏦 [Your Bank Name] | [Account Number] | [Account Name]'}"*
+
+This secures your working capital, weeds out tire-kickers, and prevents non-payment before you invest time.`;
+      }
+
+      // WhatsApp reminder script
+      if (/whatsapp|script|reminder|template|message|nudge/i.test(lower)) {
+        const bankInfo = businessProfile.bankName ? `${businessProfile.bankName} - ${businessProfile.accountNumber} (${businessProfile.accountName})` : '[Bank Name] - [Account Number]';
+        return `Here is a high-converting, courteous WhatsApp payment reminder template:
+
+> *"Hi [Client Name]! 👋 Hope you're having a wonderful week.\n\nJust a quick courtesy reminder regarding Invoice #[InvoiceNumber] for [Amount], which is due on [DueDate].\n\n🏦 Payment Details:\nBank: ${bankInfo}\n\nKindly send over your transfer receipt once settled so we can update your file immediately. Thank you so much!\n— ${businessProfile.name || 'Billa'}"*`;
+      }
+
+      // Tax & VAT
+      if (/tax|vat|wht|withholding/i.test(lower)) {
+        return `When invoicing corporate clients, explicitly state whether VAT (e.g., 7.5%) is inclusive or exclusive on your line items. If a client deducts Withholding Tax (WHT), always request their official WHT credit note so you can offset it against your corporate tax obligations.`;
+      }
+
+      // Receipt Scanning & OCR
+      if (/receipt|scan|ocr|camera|photo/i.test(lower)) {
+        return `You can scan physical receipts and invoices with your camera or file upload using the **Scan Receipt** button on the Invoices dashboard. Billa automatically extracts line items, quantities, merchant name, tax, and totals into an invoice draft instantly.`;
+      }
+
+      // General intelligent financial guidance
+      return `Regarding "${text}":
+
+To maintain healthy working capital, establish clear milestone payment terms (Net 7 or Net 14), send proactive courtesy reminders 2 days prior to due dates via WhatsApp, and request a 50% commitment deposit on new engagements over ₦50,000.
+
+Would you like me to draft a reminder message, review open receivables, or configure a payment policy for a specific client?`;
+    };
+
     try {
       const { data } = await callAiEndpoint('/api/ai/advisor', {
         question: userText,
-        context: {
-          businessName: businessProfile.name,
-          totalInvoiced: metrics.totalInvoiced,
-          collected: metrics.collected,
-          outstanding: metrics.outstanding,
-          overdueCount: metrics.overdueInvoicesCount,
-          collectionRate: metrics.collectionRate,
-        },
+        context,
       }, { timeoutMs: 14000 });
 
-      if (data?.answer) {
-        setChatHistory((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            text: data.answer,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          },
-        ]);
-      } else {
-        const isGreeting = /^(hi|hello|hey|good\s*(morning|afternoon|evening))/i.test(userText);
-        const dynamicFallback = isGreeting
-          ? `Hello! 👋 How can I help you today? I can help you draft a high-converting WhatsApp reminder, analyze your open receivables, or configure optimal milestone deposit rules for your clients.`
-          : `Based on your question regarding "${userText}": I recommend reviewing your active invoices, keeping clear payment bank details directly in all chat communications, and considering a 50% upfront deposit standard on future orders to eliminate collection delays.`;
-        setChatHistory((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            text: dynamicFallback,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          },
-        ]);
-      }
-    } catch {
+      const answerText = data?.answer || generateSmartLocalAdvice(userText);
       setChatHistory((prev) => [
         ...prev,
         {
           role: 'assistant',
-          text: `Regarding "${userText}": To protect your business cashflow, always ask for a 50% commitment deposit before starting projects. It filters high-intent clients and covers initial expenses immediately.`,
-          timestamp: 'Just now',
+          text: answerText,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        },
+      ]);
+    } catch {
+      const fallbackText = generateSmartLocalAdvice(userText);
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: fallbackText,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
     } finally {
