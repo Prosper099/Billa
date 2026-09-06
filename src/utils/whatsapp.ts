@@ -28,37 +28,32 @@ export const getWhatsAppUrls = (phone: string, message: string = ''): WhatsAppUr
 };
 
 /**
- * Launches the native WhatsApp application.
- * If no app is installed on the user's system, falls back to the web link.
+ * Launches the native WhatsApp application using the custom protocol scheme.
+ * Strictly triggers the native application (iOS, Android, macOS, Windows)
+ * without secondary automatic redirects to WhatsApp Web in the browser.
  */
 export const launchWhatsApp = (phone: string, message: string = ''): void => {
-  const { appUrl, webUrl } = getWhatsAppUrls(phone, message);
+  const { appUrl } = getWhatsAppUrls(phone, message);
 
-  // Check if mobile device
-  const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-  if (isMobile) {
-    // On mobile devices, triggering the app protocol opens the native WhatsApp app directly
+  try {
+    // Dispatch protocol navigation via a clean element dispatch
+    const link = document.createElement('a');
+    link.href = appUrl;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch {
+    // Fallback to direct location assignment if element dispatch fails
     window.location.href = appUrl;
-    return;
   }
+};
 
-  // On desktop, try the native WhatsApp application protocol
-  let appHandled = false;
-  const onBlur = () => {
-    appHandled = true;
-  };
-
-  window.addEventListener('blur', onBlur, { once: true });
-
-  // Direct protocol navigation
-  window.location.href = appUrl;
-
-  // If the browser stays focused and no native app launched after 1.2s, open fallback
-  setTimeout(() => {
-    window.removeEventListener('blur', onBlur);
-    if (!appHandled && document.hasFocus()) {
-      window.open(webUrl, '_blank', 'noopener,noreferrer');
-    }
-  }, 1200);
+/**
+ * Optional explicit launcher for browser-based WhatsApp (wa.me)
+ * only invoked when the user deliberately requests web access.
+ */
+export const openWhatsAppWeb = (phone: string, message: string = ''): void => {
+  const { webUrl } = getWhatsAppUrls(phone, message);
+  window.open(webUrl, '_blank', 'noopener,noreferrer');
 };
